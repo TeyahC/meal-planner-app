@@ -1,0 +1,25 @@
+/* Reset default margin/padding */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Make sure html and body take full height */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  font-family: Arial, sans-serif;
+}
+
+/* Center the app container */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;  /* vertical centering */
+  align-items: center;      /* horizontal centering */
+  min-height: 100vh;        /* full viewport height */
+  padding: 2rem;
+  background-color: #f9f9f9;
+  text-align: center;
+}

@@ -1,0 +1,397 @@
+.planner-container {
+  display: flex;
+  gap: 2rem;
+  padding: 2rem;
+  background-color: #f0f7ff;
+  /* light soft blue */
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(112, 161, 255, 0.2);
+  width: 100%
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 160px);
+  /* 4 columns of 160px each */
+  gap: 1.5rem;
+  justify-content: center;
+  max-width: 900px;
+  /* You can adjust this number */
+  margin: 0 auto;
+}
+
+
+.day-column {
+  background: linear-gradient(145deg, #ffffff, #dceeff);
+  padding: 1rem;
+  border-radius: 12px;
+  width: 145px;
+  box-shadow: 0 4px 10px rgba(55, 105, 255, 0.15);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.day-column:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 10px 25px rgba(55, 105, 255, 0.3);
+}
+
+.day-column h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.6rem;
+  color: #1a3f99;
+  font-weight: 600;
+  text-align: center;
+}
+
+.meal-slot {
+  border: 2px dashed #a4c0ff;
+  border-radius: 8px;
+  min-height: 65px;
+  margin-bottom: 1rem;
+  padding: 0.6rem;
+  background-color: #f7fbff;
+  transition: background 0.3s ease;
+}
+
+.meal-slot:hover {
+  background-color: #d0e5ff;
+}
+
+.assigned-recipe {
+  background: #82c0ff;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.80rem;
+  display: flex;
+  flex-direction: column;
+  /* stack vertically */
+  gap: 0.4rem;
+  color: #003a6f;
+  font-weight: 600;
+  box-shadow: 0 3px 8px rgba(0, 58, 111, 0.3);
+  user-select: none;
+  max-height: 200px;
+  /* prevent too tall */
+  overflow: hidden;
+  word-break: break-word;
+  /* wrap long names */
+}
+
+.assigned-recipe>.top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.assigned-recipe .remove-button {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  /* keep button size */
+}
+
+.assigned-recipe .remove-button:hover {
+  color: #ff5c5c;
+}
+
+.assigned-recipe label {
+  font-weight: 600;
+  font-size: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #003a6f;
+}
+
+.assigned-recipe input[type="number"] {
+  width: 55px;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.9rem;
+  border-radius: 5px;
+  border: 1px solid #aac9ff;
+  outline-offset: 2px;
+  transition: border-color 0.2s ease;
+}
+
+.assigned-recipe input[type="number"]:focus {
+  border-color: #3b78ff;
+  outline: none;
+}
+
+.assigned-recipe ul {
+  margin-top: 0.4rem;
+  max-height: 90px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  padding-left: 1rem;
+  color: #003a6f;
+}
+
+.assigned-recipe ul li {
+  line-height: 1.2;
+  margin-bottom: 0.15rem;
+}
+
+
+.remove-button {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  transition: color 0.2s ease;
+  border-right: 1rem;
+}
+
+.remove-button:hover {
+  color: #ff5c5c;
+}
+
+.remove-ingredients-button {
+  margin-left: 0.3rem;
+  color: white;
+  background-color: #82c0ff;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  font-size: 1rem;
+  transition: background-color 0.2s ease;
+}
+
+.remove-ingredients-button:hover {
+  background-color: #5caeff;
+}
+
+
+.reset-remove-buttton {
+  margin-top: "1rem";
+  padding: "0.5rem 1rem";
+  border: "1px solid #aaa";
+  border-radius: "6px";
+  background: "#f8f8f8";
+  color: "#333";
+  font-size: "0.95rem";
+  cursor: "pointer";
+}
+
+.remove-button:hover {
+  background-color: #ff3b3b;
+}
+
+.empty-slot {
+  color: #6c7a9c;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0.4rem;
+  font-style: italic;
+}
+
+.planner-layout {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  margin-bottom: 2.5rem;
+}
+
+.recipe-sidebar {
+  width: 550px;
+  background: #ffffff;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(55, 105, 255, 0.15);
+  transition: box-shadow 0.3s ease;
+}
+
+.recipe-sidebar:hover {
+  box-shadow: 0 10px 30px rgba(55, 105, 255, 0.3);
+}
+
+.recipe-sidebar h3 {
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+  color: #1a3f99;
+  font-weight: 700;
+  text-align: center;
+}
+
+.recipe-sidebar>div {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.draggable-recipe {
+  padding: 0.65rem;
+  background-color: #e6f0ff;
+  border: 1.5px solid #aac9ff;
+  border-radius: 8px;
+  cursor: grab;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1a3f99;
+  user-select: none;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 1px 4px rgba(26, 63, 153, 0.2);
+}
+
+.draggable-recipe:hover {
+  background-color: #a8c8ff;
+  box-shadow: 0 4px 15px rgba(26, 63, 153, 0.4);
+}
+
+.shopping-list {
+  margin-top: 3rem;
+  padding: 2rem;
+  background-color: #ffffff;
+  border: 1.5px solid #aac9ff;
+  border-radius: 14px;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+  box-shadow: 0 6px 20px rgba(55, 105, 255, 0.2);
+  transition: box-shadow 0.3s ease;
+}
+
+.shopping-list:hover {
+  box-shadow: 0 10px 35px rgba(55, 105, 255, 0.4);
+}
+
+.shopping-list h3 {
+  font-size: 1.4rem;
+  margin-bottom: 1.2rem;
+  color: #1a3f99;
+  font-weight: 700;
+  text-align: center;
+}
+
+.shopping-list ul {
+  list-style: disc inside;
+  padding-left: 1rem;
+  color: #2d4a7a;
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+
+/* Week selector container */
+.week-selector {
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+/* Each week button + delete button wrapper */
+.week-button-wrapper {
+  margin-right: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Week button itself */
+.week-button {
+  padding: 0.5rem 1rem;
+  font-weight: normal;
+  background-color: #f0f0f0;
+  color: black;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  min-width: 100px;
+  user-select: none;
+}
+
+.week-button[aria-current="true"],
+.week-button.active {
+  background-color: #4caf50;
+  color: white;
+  font-weight: bold;
+}
+
+/* Editable week name span */
+.week-name {
+  user-select: none;
+  cursor: text;
+  border-bottom: 1px dashed #888;
+  display: inline-block;
+  width: 90px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Week name text input */
+.week-button input[type="text"] {
+  width: 90px;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 0.9rem;
+}
+
+/* Delete week button */
+.delete-week-button {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  font-weight: bold;
+  user-select: none;
+  height: 32px;
+}
+
+/* Add new week button */
+.add-week-button {
+  padding: 0.5rem 1rem;
+  background-color: #2196f3;
+  color: white;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  margin-left: 1rem;
+  user-select: none;
+}
+
+/* Portion selector container */
+.portion-selector {
+  text-align: center;
+  margin-top: 2rem;
+  font-weight: bold;
+}
+
+.portion-selector label {
+  margin-right: 0.5rem;
+}
+
+.portion-selector select {
+  padding: 0.4rem 0.6rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  user-select: none;
+}
+
+/* Remove inline styles from assigned-recipe portions input */
+.assigned-recipe>div label input[type="number"] {
+  width: 30px;
+  padding: 0;
+  margin-left: 0.25rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-size: 0.9rem;
+}
+
+/* Remove inline style margin-top for portions label container */
+.assigned-recipe>div {
+  margin-top: 0.3rem;
+  font-size: 0.9rem;
+}

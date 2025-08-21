@@ -1,0 +1,58 @@
+.ingredient-form {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  /* full width of parent */
+  margin-bottom: 2rem;
+  max-width: 900px;
+  /* match your app max width */
+  margin-left: auto;
+  /* center the form */
+  margin-right: auto;
+}
+
+.ingredient-input {
+  flex-grow: 1;
+  padding: 1.1rem 1.4rem;
+  /* bigger padding for larger input */
+  font-size: 1.3rem;
+  /* bigger font */
+  border: 2px solid #b3b3ff;
+  /* soft purple border */
+  border-radius: 12px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  background-color: #f0f0ff;
+  /* subtle pale purple background */
+  color: #2a2a72;
+}
+
+.ingredient-input::placeholder {
+  color: #6e6ecf;
+  /* lighter placeholder color */
+}
+
+.ingredient-input:focus {
+  border-color: #5c5cff;
+  /* stronger purple on focus */
+  outline: none;
+  box-shadow: 0 0 8px rgba(92, 92, 255, 0.5);
+}
+
+.ingredient-button {
+  background-color: #5c5cff;
+  /* matching purple button */
+  border: none;
+  color: white;
+  padding: 0.8rem 1.rem;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1rem;
+  transition: background-color 0.3s ease;
+  box-shadow: 0 4px 8px rgba(92, 92, 255, 0.3);
+}
+
+.ingredient-button:hover {
+  background-color: #4a4adb;
+  box-shadow: 0 6px 12px rgba(74, 74, 219, 0.5);
+}
