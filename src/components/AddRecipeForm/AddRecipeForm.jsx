@@ -12,6 +12,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
   const [protein, setProtein] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Load existing recipe if editing
   useEffect(() => {
     if (existingRecipe) {
       setName(existingRecipe.name || "");
@@ -29,17 +30,61 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
     }
   }, [existingRecipe]);
 
+  // Parse ingredients in the flexible format
   const parseIngredients = (text) => {
     return text
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.length > 0)
+      .filter(Boolean)
       .map((line) => {
-        const parts = line.split(" ");
-        const quantity = parseFloat(parts[0]);
-        const unit = parts[1] || "";
-        const name = parts.slice(2).join(" ") || "";
-        return { quantity, unit, name };
+        // Remove symbols like †
+        line = line.replace(/†/g, "").trim();
+
+        // Fraction to decimal helper
+        const fractionToDecimal = (str) => {
+          if (str.includes("/")) {
+            const [num, denom] = str.split("/").map(Number);
+            return num / denom;
+          }
+          return parseFloat(str);
+        };
+
+        // Match weight/volume in parentheses, e.g., "Mayonnaise (50ml)"
+        const weightMatch = line.match(/(.+?)\(([\d./]+)([a-zA-Z]+)\)/);
+        if (weightMatch) {
+          return {
+            name: weightMatch[1].trim(),
+            quantity: fractionToDecimal(weightMatch[2]),
+            unit: weightMatch[3],
+          };
+        }
+
+        // Match count/unit, e.g., "White potato x3"
+        const countMatch = line.match(/(.+?) x([\d./]+)/i);
+        if (countMatch) {
+          return {
+            name: countMatch[1].trim(),
+            quantity: fractionToDecimal(countMatch[2]),
+            unit: "unit",
+          };
+        }
+
+        // Match decimal quantity at start, e.g., "0.25 unit Mayonnaise"
+        const decimalMatch = line.match(/^([\d./]+)\s+(\S+)\s+(.+)$/);
+        if (decimalMatch) {
+          return {
+            quantity: fractionToDecimal(decimalMatch[1]),
+            unit: decimalMatch[2],
+            name: decimalMatch[3],
+          };
+        }
+
+        // Default: just ingredient name, 1 unit
+        return {
+          name: line,
+          quantity: 1,
+          unit: "unit",
+        };
       });
   };
 
@@ -47,38 +92,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
     e.preventDefault();
     setLoading(true);
 
-    // Parse ingredients using the updated parser
-    const parsedIngredients = ingredients
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line) => {
-        // Remove † symbols
-        line = line.replace(/†/g, "").trim();
-
-        // Match weight in grams or ml, e.g., "Salmon (150g)"
-        const weightMatch = line.match(/(.+?)\(([\d.]+)(g|ml)\)/i);
-        if (weightMatch) {
-          return {
-            name: weightMatch[1].trim(),
-            quantity: parseFloat(weightMatch[2]),
-            unit: weightMatch[3].toLowerCase(),
-          };
-        }
-
-        // Match count/unit, e.g., "Garlic clove x2"
-        const countMatch = line.match(/(.+?) x(\d+)/i);
-        if (countMatch) {
-          return {
-            name: countMatch[1].trim(),
-            quantity: parseInt(countMatch[2], 10),
-            unit: "unit",
-          };
-        }
-
-        // Default: ingredient only
-        return { name: line, quantity: 1, unit: "unit" };
-      });
+    const parsedIngredients = parseIngredients(ingredients);
 
     // Normalize by servings
     const normalizedIngredients = parsedIngredients.map(
@@ -143,11 +157,11 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
       />
 
       <textarea
-        placeholder="Ingredients (one per line, format: quantity unit name, e.g. '200 g chicken breast')"
+        placeholder="Ingredients (one per line, e.g. 'Cayenne pepper (0.5tsp)' or 'White potato x3')"
         value={ingredients}
         onChange={(e) => setIngredients(e.target.value)}
         required
-        rows={5}
+        rows={8}
       />
 
       <input
@@ -197,8 +211,14 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         required
       />
 
-      <button type="submit">
-        {existingRecipe ? "Update Recipe" : "Add Recipe"}
+      <button type="submit" disabled={loading}>
+        {loading
+          ? existingRecipe
+            ? "Updating..."
+            : "Adding..."
+          : existingRecipe
+          ? "Update Recipe"
+          : "Add Recipe"}
       </button>
 
       {existingRecipe && (
