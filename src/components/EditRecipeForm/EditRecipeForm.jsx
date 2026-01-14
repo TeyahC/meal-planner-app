@@ -29,17 +29,60 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
     }
   }, [initialRecipe]);
 
+  // Helper to convert fractions to decimals
+  const fractionToDecimal = (str) => {
+    if (str.includes("/")) {
+      const [num, denom] = str.split("/").map(Number);
+      return num / denom;
+    }
+    return parseFloat(str);
+  };
+
+  // Flexible ingredient parser
   const parseIngredients = (text) => {
     return text
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const parts = line.split(" ");
-        const quantity = parseFloat(parts[0]);
-        const unit = parts[1] || "";
-        const name = parts.slice(2).join(" ") || "";
-        return { quantity, unit, name };
+        line = line.replace(/†/g, "").trim();
+
+        // Match weight/volume in parentheses: "Mayonnaise (50ml)"
+        const weightMatch = line.match(/(.+?)\(([\d./]+)([a-zA-Z]+)\)/);
+        if (weightMatch) {
+          return {
+            name: weightMatch[1].trim(),
+            quantity: fractionToDecimal(weightMatch[2]),
+            unit: weightMatch[3],
+          };
+        }
+
+        // Match count/unit: "White potato x3"
+        const countMatch = line.match(/(.+?) x([\d./]+)/i);
+        if (countMatch) {
+          return {
+            name: countMatch[1].trim(),
+            quantity: fractionToDecimal(countMatch[2]),
+            unit: "unit",
+          };
+        }
+
+        // Match decimal quantity at start: "0.25 unit Mayonnaise"
+        const decimalMatch = line.match(/^([\d./]+)\s+(\S+)\s+(.+)$/);
+        if (decimalMatch) {
+          return {
+            quantity: fractionToDecimal(decimalMatch[1]),
+            unit: decimalMatch[2],
+            name: decimalMatch[3],
+          };
+        }
+
+        // Default: 1 unit
+        return {
+          name: line,
+          quantity: 1,
+          unit: "unit",
+        };
       });
   };
 
@@ -48,11 +91,13 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
     setLoading(true);
 
     const parsedIngredients = parseIngredients(ingredients);
+
+    // Normalize quantities by servings
     const normalizedIngredients = parsedIngredients.map(
-      ({ quantity, unit, name }) => ({
+      ({ name, quantity, unit }) => ({
+        name,
         quantity: servings > 0 ? quantity / servings : quantity,
         unit,
-        name,
       })
     );
 
@@ -64,7 +109,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
         .map((a) => a.trim().toLowerCase())
         .filter(Boolean),
       instructions,
-      servings: 1, // store as per-person
+      servings, // store as entered
       calories: Number(calories),
       protein: Number(protein),
     };
@@ -82,7 +127,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       alert(error.message);
     } else {
       alert("Recipe updated!");
-      if (onUpdated) onUpdated(data); // call callback to refresh UI
+      if (onUpdated) onUpdated(data);
     }
   };
 
@@ -99,11 +144,11 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       />
 
       <textarea
-        placeholder="Ingredients (one per line, format: quantity unit name, e.g. '200 g chicken')"
+        placeholder="Ingredients (one per line, e.g., 'Cayenne pepper (0.5tsp)' or 'White potato x3')"
         value={ingredients}
         onChange={(e) => setIngredients(e.target.value)}
         required
-        rows={5}
+        rows={8}
       />
 
       <input
