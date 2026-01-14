@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from "react";
+import { supabase } from "../../lib/supabase";
+import "../../styles/App.css";
 
-export default function AddRecipeForm({ onAddRecipe, existingRecipe, onUpdateRecipe, onCancel }) {
+export default function AddRecipeForm({ existingRecipe, onCancel }) {
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("lunch");
-  const [ingredients, setIngredients] = useState(""); // multiline string
+  const [ingredients, setIngredients] = useState("");
   const [allergies, setAllergies] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [servings, setServings] = useState(1);  // NEW
+  const [servings, setServings] = useState(1);
+  const [calories, setCalories] = useState("");
+  const [protein, setProtein] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (existingRecipe) {
       setName(existingRecipe.name || "");
-      setCategory(existingRecipe.category || "lunch");
 
       const ingrText = (existingRecipe.ingredients || [])
         .map(({ quantity, unit, name }) => `${quantity} ${unit} ${name}`)
@@ -20,8 +23,9 @@ export default function AddRecipeForm({ onAddRecipe, existingRecipe, onUpdateRec
 
       setAllergies((existingRecipe.allergies || []).join(", "));
       setInstructions(existingRecipe.instructions || "");
-
-      setServings(existingRecipe.servings || 1);  // load servings if exists
+      setServings(existingRecipe.servings || 1);
+      setCalories(existingRecipe.calories || "");
+      setProtein(existingRecipe.protein || "");
     }
   }, [existingRecipe]);
 
@@ -35,50 +39,61 @@ export default function AddRecipeForm({ onAddRecipe, existingRecipe, onUpdateRec
         const quantity = parseFloat(parts[0]);
         const unit = parts[1] || "";
         const name = parts.slice(2).join(" ") || "";
-
         return { quantity, unit, name };
       });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
 
-    // Parse ingredients first
     const parsedIngredients = parseIngredients(ingredients);
-
-    // Normalize quantities to 1-person portion by dividing by servings
-    const normalizedIngredients = parsedIngredients.map(({ quantity, unit, name }) => ({
-      quantity: servings > 0 ? quantity / servings : quantity,
-      unit,
-      name,
-    }));
+    const normalizedIngredients = parsedIngredients.map(
+      ({ quantity, unit, name }) => ({
+        quantity: servings > 0 ? quantity / servings : quantity,
+        unit,
+        name,
+      })
+    );
 
     const newRecipe = {
-      id: existingRecipe ? existingRecipe.id : Date.now().toString(),
-      name,
-      category,
+      name: name.trim(),
       ingredients: normalizedIngredients,
       allergies: allergies
         .split(",")
         .map((a) => a.trim().toLowerCase())
-        .filter((a) => a.length > 0),
+        .filter(Boolean),
       instructions,
-      servings: 1, // always save as 1-person portion
+      servings: 1,
+      calories: Number(calories),
+      protein: Number(protein),
     };
 
-    if (existingRecipe && onUpdateRecipe) {
-      onUpdateRecipe(newRecipe);
-    } else if (onAddRecipe) {
-      onAddRecipe(newRecipe);
+    let error;
+    if (existingRecipe) {
+      ({ error } = await supabase
+        .from("recipes")
+        .update(newRecipe)
+        .eq("id", existingRecipe.id));
+    } else {
+      ({ error } = await supabase.from("recipes").insert([newRecipe]));
     }
 
-    if (!existingRecipe) {
-      setName("");
-      setCategory("lunch");
-      setIngredients("");
-      setAllergies("");
-      setInstructions("");
-      setServings(1);
+    setLoading(false);
+
+    if (error) {
+      alert(error.message);
+    } else {
+      alert(`Recipe ${existingRecipe ? "updated" : "added"}!`);
+      if (!existingRecipe) {
+        setName("");
+        setIngredients("");
+        setAllergies("");
+        setInstructions("");
+        setServings(1);
+        setCalories("");
+        setProtein("");
+      }
     }
   };
 
@@ -93,14 +108,6 @@ export default function AddRecipeForm({ onAddRecipe, existingRecipe, onUpdateRec
         onChange={(e) => setName(e.target.value)}
         required
       />
-
-      <select value={category} onChange={(e) => setCategory(e.target.value)}>
-        <option value="breakfast">Breakfast</option>
-        <option value="lunch">Lunch</option>
-        <option value="dinner">Dinner</option>
-        <option value="snack">Snack</option>
-        <option value="dessert">Dessert</option>
-      </select>
 
       <textarea
         placeholder="Ingredients (one per line, format: quantity unit name, e.g. '200 g chicken breast')"
@@ -125,31 +132,44 @@ export default function AddRecipeForm({ onAddRecipe, existingRecipe, onUpdateRec
         rows={5}
       />
 
-      {/* New Servings input */}
-      <label htmlFor="servings-input" style={{ display: "block", margin: "10px 0 5px" }}>
-        Servings (number of people):
-      </label>
+      <label htmlFor="servings-input">Servings (number of people):</label>
       <input
         id="servings-input"
         type="number"
         min="1"
         value={servings}
-        onChange={(e) => setServings(Math.max(1, parseInt(e.target.value) || 1))}
+        onChange={(e) =>
+          setServings(Math.max(1, parseInt(e.target.value) || 1))
+        }
         required
-        style={{ width: "60px" }}
       />
 
-      <button type="submit" className="add-new-button" style={{ marginTop: "15px" }}>
+      <label htmlFor="calories-input">Calories per portion:</label>
+      <input
+        id="calories-input"
+        type="number"
+        min="0"
+        value={calories}
+        onChange={(e) => setCalories(e.target.value)}
+        required
+      />
+
+      <label htmlFor="protein-input">Protein (g) per portion:</label>
+      <input
+        id="protein-input"
+        type="number"
+        min="0"
+        value={protein}
+        onChange={(e) => setProtein(e.target.value)}
+        required
+      />
+
+      <button type="submit">
         {existingRecipe ? "Update Recipe" : "Add Recipe"}
       </button>
 
       {existingRecipe && (
-        <button
-          type="button"
-          onClick={onCancel}
-          className="cancel-button"
-          style={{ marginLeft: "10px" }}
-        >
+        <button type="button" onClick={onCancel} className="cancel-button">
           Cancel
         </button>
       )}
