@@ -47,12 +47,45 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
     e.preventDefault();
     setLoading(true);
 
-    const parsedIngredients = parseIngredients(ingredients);
+    // Parse ingredients using the updated parser
+    const parsedIngredients = ingredients
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        // Remove † symbols
+        line = line.replace(/†/g, "").trim();
+
+        // Match weight in grams or ml, e.g., "Salmon (150g)"
+        const weightMatch = line.match(/(.+?)\(([\d.]+)(g|ml)\)/i);
+        if (weightMatch) {
+          return {
+            name: weightMatch[1].trim(),
+            quantity: parseFloat(weightMatch[2]),
+            unit: weightMatch[3].toLowerCase(),
+          };
+        }
+
+        // Match count/unit, e.g., "Garlic clove x2"
+        const countMatch = line.match(/(.+?) x(\d+)/i);
+        if (countMatch) {
+          return {
+            name: countMatch[1].trim(),
+            quantity: parseInt(countMatch[2], 10),
+            unit: "unit",
+          };
+        }
+
+        // Default: ingredient only
+        return { name: line, quantity: 1, unit: "unit" };
+      });
+
+    // Normalize by servings
     const normalizedIngredients = parsedIngredients.map(
-      ({ quantity, unit, name }) => ({
+      ({ name, quantity, unit }) => ({
+        name,
         quantity: servings > 0 ? quantity / servings : quantity,
         unit,
-        name,
       })
     );
 
@@ -64,7 +97,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         .map((a) => a.trim().toLowerCase())
         .filter(Boolean),
       instructions,
-      servings: 1,
+      servings,
       calories: Number(calories),
       protein: Number(protein),
     };
