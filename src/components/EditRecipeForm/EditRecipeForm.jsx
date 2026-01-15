@@ -39,16 +39,6 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       "⅓": 1 / 3,
       "⅔": 2 / 3,
     };
-    const UNIT_LIST = [
-      "ml",
-      "g",
-      "tsp",
-      "tbsp",
-      "clove",
-      "portion",
-      "portions",
-      "unit",
-    ];
 
     const normalizeQty = (q) => {
       if (!q) return 1;
@@ -61,51 +51,172 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       return Number(q);
     };
 
-    const lines = [
+    const UNIT_LIST = [
+      "ml",
+      "g",
+      "kg",
+      "tsp",
+      "tbsp",
+      "clove",
+      "cloves",
+      "pcs",
+      "pc",
+      "piece",
+      "pieces",
+      "portion",
+      "portions",
+      "unit",
+    ];
+
+    const normalizeUnit = (u) => {
+      if (!u) return "unit";
+      u = u.toLowerCase();
+      if (u === "grams" || u === "gram") return "g";
+      if (u === "milliliters" || u === "millilitre" || u === "milliliters")
+        return "ml";
+      if (u === "teaspoon" || u === "teaspoons") return "tsp";
+      if (u === "tablespoon" || u === "tablespoons") return "tbsp";
+      if (u === "pcs" || u === "pc" || u === "piece" || u === "pieces")
+        return "unit";
+      if (u === "cloves" || u === "clove") return "clove";
+      if (u === "kg") return "kg";
+      return u;
+    };
+
+    const parseQtyUnit = (s) => {
+      if (!s) return null;
+      s = s.trim();
+      // handle fractions like 1/2 or unicode fractions
+      const fracMatch = s.match(/^([\d]+\/[\d]+|[½¼¾⅓⅔])\s*([a-zA-Z]+)?/);
+      if (fracMatch) {
+        return {
+          quantity: normalizeQty(fracMatch[1]),
+          unit: normalizeUnit(fracMatch[2]),
+        };
+      }
+
+      // number attached to unit e.g. 50ml
+      const attached = s.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)\b/);
+      if (attached) {
+        return {
+          quantity: Number(attached[1]),
+          unit: normalizeUnit(attached[2]),
+        };
+      }
+
+      // number + optional unit separated by space e.g. '50 ml' or '2 tsp'
+      const parts = s.split(/\s+/);
+      const num = parts.find((p) =>
+        /^(?:\d+(?:\.\d+)?|[½¼¾⅓⅔]|\d+\/\d+)$/.test(p)
+      );
+      if (num) {
+        const idx = parts.indexOf(num);
+        const unit = parts[idx + 1];
+        return { quantity: normalizeQty(num), unit: normalizeUnit(unit) };
+      }
+
+      return null;
+    };
+
+    return [
       ...new Set(
         text
           .split("\n")
-          .map((l) => l.replace(/[†]/g, "").trim())
+          .map((line) => line.trim())
           .filter(Boolean)
       ),
-    ];
+    ]
+      .map((raw) => raw.replace(/[†]/g, "").trim())
+      .map((line) => {
+        let quantity = null;
+        let unit = null;
+        let name = line;
 
-    return lines.map((line) => {
-      let quantity = 1;
-      let unit = "unit";
-      let name = line;
+        // extract trailing multiplier e.g. 'x2' or '×2'
+        const multMatch = name.match(/\b[x×]\s*(\d+(?:\.\d+)?)$/i);
+        let multiplier = 1;
+        if (multMatch) {
+          multiplier = Number(multMatch[1]) || 1;
+          name = name.slice(0, multMatch.index).trim();
+        }
 
-      // Match quantity at the start (e.g., "2 garlic cloves")
-      const qtyMatch = line.match(/^([\d./½¼¾⅓⅔]+)\s+(.*)/);
-      if (qtyMatch) {
-        quantity = normalizeQty(qtyMatch[1]);
-        name = qtyMatch[2];
-      }
+        // find parenthesis content and try to parse quantity/unit from it
+        const parenMatch = name.match(/\(([^)]+)\)/);
+        let parenParsed = null;
+        if (parenMatch) {
+          parenParsed = parseQtyUnit(parenMatch[1]);
+          if (parenParsed) {
+            // if parentheses contain a measurement (g/ml/tsp/tbsp/kg) prefer that
+            const isMeasurement = ["g", "ml", "tsp", "tbsp", "kg"].includes(
+              parenParsed.unit
+            );
+            if (isMeasurement) {
+              quantity = parenParsed.quantity * multiplier;
+              unit = parenParsed.unit;
+              // remove parentheses from name
+              name = name.replace(parenMatch[0], "").trim();
+            } else {
+              // treat as piece count e.g. (2pcs)
+              quantity = parenParsed.quantity * multiplier;
+              unit = "unit";
+              name = name.replace(parenMatch[0], "").trim();
+            }
+          } else {
+            // remove parentheses if not useful
+            name = name.replace(parenMatch[0], "").trim();
+          }
+        }
 
-      // Match xN at the end (e.g., "Cheddar cheese x2")
-      const xMatch = name.match(/(.*)\s+x(\d+)$/i);
-      if (xMatch) {
-        name = xMatch[1].trim();
-        quantity *= Number(xMatch[2]);
-      }
+        // if still no quantity, check for leading quantity (e.g., '2 tsp ...' or '16g tomato')
+        if (quantity == null) {
+          // leading attached unit: 50ml mayonnaise
+          const leadAttached = name.match(
+            /^(\d+(?:\.\d+)?)([a-zA-Z]+)\b\s*(.*)/
+          );
+          if (leadAttached) {
+            quantity = Number(leadAttached[1]) * multiplier;
+            unit = normalizeUnit(leadAttached[2]);
+            name = (leadAttached[3] || "").trim();
+          } else {
+            // leading number separated: '2 tsp garlic'
+            const lead = name.match(/^([\d./½¼¾⅓⅔]+)\s*([a-zA-Z]+)?\s*(.*)$/);
+            if (lead) {
+              quantity = normalizeQty(lead[1]) * multiplier;
+              unit = normalizeUnit(lead[2]);
+              name = (lead[3] || "").trim();
+            }
+          }
+        }
 
-      // Match (Npcs) or (Ng) in parentheses (e.g., "Chicken breast portions (2pcs)")
-      const parenMatch = name.match(/\((\d+)\s*(pcs?|units?|g|ml)\)/i);
-      if (parenMatch) {
-        quantity *= Number(parenMatch[1]);
-        name = name.replace(parenMatch[0], "").trim();
-      }
+        // if still no quantity but multiplier exists (e.g., 'White potato x3')
+        if (
+          (quantity == null || isNaN(quantity)) &&
+          multiplier &&
+          multiplier !== 1
+        ) {
+          quantity = multiplier;
+          unit = "unit";
+        }
 
-      // Check if the first word is a unit
-      const parts = name.split(/\s+/);
-      if (parts.length > 1 && UNIT_LIST.includes(parts[0].toLowerCase())) {
-        unit = parts[0].toLowerCase();
-        parts.shift();
-        name = parts.join(" ");
-      }
+        // fallback defaults
+        if (quantity == null || isNaN(quantity)) quantity = 1;
+        if (!unit) unit = "unit";
 
-      return { quantity, unit, name };
-    });
+        // clean name: remove common trailing words like 'x2', 'pcs', 'portion(s)'
+        name = name
+          .replace(/\bx\s*\d+$/i, "")
+          .replace(/\bpcs?\b/i, "")
+          .replace(/\bpieces?\b/i, "")
+          .replace(/\bportion?s?\b/i, "")
+          .replace(/\bof\b/i, "")
+          .replace(/[\-–—_,]+$/g, "")
+          .trim();
+
+        // if name becomes empty, set a generic name
+        if (!name) name = line;
+
+        return { quantity, unit, name };
+      });
   };
 
   /* ---------------- SUBMIT ---------------- */
