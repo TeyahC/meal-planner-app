@@ -20,148 +20,130 @@ export default function WeekPlanner() {
       return acc;
     }, {});
 
-  const [planner, setPlanner] = useState(() => {
-    const saved = localStorage.getItem("multiWeekPlanner");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      Object.values(parsed).forEach((week) =>
-        days.forEach((day) => {
-          if (!Array.isArray(week[day])) week[day] = [];
-        })
-      );
-      return parsed;
-    }
-    return { week1: createEmptyWeekPlanner() };
-  });
-
-  const [currentWeek, setCurrentWeek] = useState(
-    () => localStorage.getItem("currentWeek") || "week1"
-  );
-  const [portions, setPortions] = useState(() => {
-    const saved = localStorage.getItem("plannerPortions");
-    return saved ? parseInt(saved, 10) : 1;
-  });
-
   const [recipes, setRecipes] = useState([]);
+  const [planner, setPlanner] = useState(createEmptyWeekPlanner());
+  const [currentWeekId, setCurrentWeekId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [portions, setPortions] = useState(1);
 
-  // Shopping list state
-  const [removedIngredients, setRemovedIngredients] = useState([]);
-
-  // Fetch recipes from Supabase
+  // Fetch recipes
   useEffect(() => {
     const fetchRecipes = async () => {
-      setLoading(true);
       const { data, error } = await supabase
         .from("recipes")
         .select("*")
         .order("created_at", { ascending: false });
+      if (error) console.error(error);
+      else setRecipes(data || []);
+    };
+    fetchRecipes();
+  }, []);
+
+  // Fetch or create current week
+  useEffect(() => {
+    const fetchOrCreateWeek = async () => {
+      setLoading(true);
+      // Find the latest week
+      const { data, error } = await supabase
+        .from("week_planner")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
 
       if (error) {
-        console.error("Error fetching recipes:", error.message);
+        console.error(error);
+        // If no weeks exist, create one
+        const { data: newWeek, error: createError } = await supabase
+          .from("week_planner")
+          .insert([{ planner: createEmptyWeekPlanner() }])
+          .select()
+          .single();
+
+        if (createError) console.error(createError);
+        else {
+          setPlanner(newWeek.planner);
+          setCurrentWeekId(newWeek.id);
+        }
       } else {
-        setRecipes(data || []);
+        setPlanner(data.planner);
+        setCurrentWeekId(data.id);
       }
       setLoading(false);
     };
 
-    fetchRecipes();
+    fetchOrCreateWeek();
   }, []);
 
-  // Persist planner and portions
-  useEffect(() => {
-    localStorage.setItem("multiWeekPlanner", JSON.stringify(planner));
-  }, [planner]);
-  useEffect(() => {
-    localStorage.setItem("currentWeek", currentWeek);
-  }, [currentWeek]);
-  useEffect(() => {
-    localStorage.setItem("plannerPortions", portions.toString());
-  }, [portions]);
-
-  const handleRemoveRecipe = (day, index) => {
-    setPlanner((prev) => ({
-      ...prev,
-      [currentWeek]: {
-        ...prev[currentWeek],
-        [day]: prev[currentWeek][day].filter((_, i) => i !== index),
-      },
-    }));
-  };
-
-  const handlePortionsChange = (day, index, newPortions) => {
-    if (newPortions < 1) return;
-    setPlanner((prev) => {
-      const updated = [...prev[currentWeek][day]];
-      updated[index] = { ...updated[index], portions: newPortions };
-      return {
-        ...prev,
-        [currentWeek]: { ...prev[currentWeek], [day]: updated },
-      };
-    });
+  // Save planner changes to Supabase
+  const savePlanner = async (newPlanner) => {
+    if (!currentWeekId) return;
+    const { error } = await supabase
+      .from("week_planner")
+      .update({ planner: newPlanner })
+      .eq("id", currentWeekId);
+    if (error) console.error("Error saving week:", error);
   };
 
   const handleDragEnd = ({ source, destination, draggableId }) => {
     if (!destination) return;
     if (destination.droppableId === "recipe-list") return;
 
-    const recipeId = draggableId;
-    const recipe = recipes.find((r) => r.id.toString() === recipeId);
+    const recipe = recipes.find((r) => r.id.toString() === draggableId);
     if (!recipe) return;
 
-    // From sidebar → day
     if (source.droppableId === "recipe-list") {
       const day = destination.droppableId;
-      setPlanner((prev) => ({
-        ...prev,
-        [currentWeek]: {
-          ...prev[currentWeek],
-          [day]: [...prev[currentWeek][day], { recipe, portions: 1 }],
-        },
-      }));
+      const newPlanner = {
+        ...planner,
+        [day]: [...planner[day], { recipe, portions: 1 }],
+      };
+      setPlanner(newPlanner);
+      savePlanner(newPlanner);
       return;
     }
 
     // Day → day reorder
     const sourceDay = source.droppableId;
     const destDay = destination.droppableId;
-
-    setPlanner((prev) => {
-      const sourceList = Array.from(prev[currentWeek][sourceDay]);
-      const destList = Array.from(prev[currentWeek][destDay]);
-      const [moved] = sourceList.splice(source.index, 1);
-      destList.splice(destination.index, 0, moved);
-      return {
-        ...prev,
-        [currentWeek]: {
-          ...prev[currentWeek],
-          [sourceDay]: sourceDay === destDay ? destList : sourceList,
-          [destDay]: destList,
-        },
-      };
-    });
+    const newPlanner = { ...planner };
+    const [moved] = newPlanner[sourceDay].splice(source.index, 1);
+    newPlanner[destDay].splice(destination.index, 0, moved);
+    setPlanner(newPlanner);
+    savePlanner(newPlanner);
   };
 
-  // Calculate aggregated shopping list
+  const handleRemoveRecipe = (day, index) => {
+    const newPlanner = { ...planner };
+    newPlanner[day].splice(index, 1);
+    setPlanner(newPlanner);
+    savePlanner(newPlanner);
+  };
+
+  const handlePortionsChange = (day, index, newPortions) => {
+    if (newPortions < 1) return;
+    const newPlanner = { ...planner };
+    newPlanner[day][index].portions = newPortions;
+    setPlanner(newPlanner);
+    savePlanner(newPlanner);
+  };
+
   const ingredientTotals = useMemo(() => {
     const totals = {};
-    Object.values(planner[currentWeek]).forEach((dayRecipes) => {
+    Object.values(planner).forEach((dayRecipes) => {
       dayRecipes.forEach(({ recipe, portions: recipePortions }) => {
         recipe.ingredients.forEach(({ name, unit, quantity }) => {
           const key = `${name}-${unit}`;
           const qty = (quantity || 0) * recipePortions * portions;
-          if (totals[key]) {
-            totals[key].quantity += qty;
-          } else {
-            totals[key] = { name, unit, quantity: qty };
-          }
+          if (totals[key]) totals[key].quantity += qty;
+          else totals[key] = { name, unit, quantity: qty };
         });
       });
     });
     return totals;
-  }, [planner, currentWeek, portions]);
+  }, [planner, portions]);
 
-  if (loading) return <p>Loading recipes...</p>;
+  if (loading) return <p>Loading week planner...</p>;
 
   return (
     <>
@@ -179,12 +161,12 @@ export default function WeekPlanner() {
                       className="meal-slot"
                     >
                       <strong>Dinner</strong>
-                      {planner[currentWeek][day].map(
-                        ({ recipe, portions: recipePortions }, index) => (
+                      {planner[day].map(
+                        ({ recipe, portions: rPortions }, idx) => (
                           <Draggable
-                            key={`${recipe.id}-${day}-${index}`}
+                            key={`${recipe.id}-${day}-${idx}`}
                             draggableId={recipe.id.toString()}
-                            index={index}
+                            index={idx}
                           >
                             {(provided) => (
                               <div
@@ -196,9 +178,7 @@ export default function WeekPlanner() {
                                 <div className="top-row">
                                   <span>{recipe.name}</span>
                                   <button
-                                    onClick={() =>
-                                      handleRemoveRecipe(day, index)
-                                    }
+                                    onClick={() => handleRemoveRecipe(day, idx)}
                                   >
                                     ✖
                                   </button>
@@ -208,11 +188,11 @@ export default function WeekPlanner() {
                                   <input
                                     type="number"
                                     min="1"
-                                    value={recipePortions}
+                                    value={rPortions}
                                     onChange={(e) =>
                                       handlePortionsChange(
                                         day,
-                                        index,
+                                        idx,
                                         parseInt(e.target.value, 10)
                                       )
                                     }
@@ -257,12 +237,6 @@ export default function WeekPlanner() {
                           <p>
                             <strong>Protein:</strong> {recipe.protein || 0} g
                           </p>
-                          {recipe.allergies?.length > 0 && (
-                            <p>
-                              <strong>Allergies:</strong>{" "}
-                              {recipe.allergies.join(", ")}
-                            </p>
-                          )}
                         </div>
                       )}
                     </Draggable>
@@ -275,16 +249,11 @@ export default function WeekPlanner() {
         </div>
       </DragDropContext>
 
-      {/* Global portion selector */}
       <div className="portion-selector">
-        <label htmlFor="portion-selector">
-          Number of people (global multiplier):
-        </label>
+        <label>Number of people (global multiplier):</label>
         <select
-          id="portion-selector"
           value={portions}
           onChange={(e) => setPortions(parseInt(e.target.value, 10))}
-          className="portion-select"
         >
           {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
             <option key={num} value={num}>
@@ -294,47 +263,22 @@ export default function WeekPlanner() {
         </select>
       </div>
 
-      {/* Shopping list */}
       <div className="shopping-list">
         <h3>Shopping List</h3>
         {Object.keys(ingredientTotals).length === 0 ? (
           <p>No ingredients selected yet.</p>
         ) : (
-          <>
-            <ul>
-              {Object.entries(ingredientTotals)
-                .filter(([key]) => !removedIngredients.includes(key))
-                .sort((a, b) => a[0].localeCompare(b[0]))
-                .map(([key, { name, quantity, unit }], index) => (
-                  <li key={index}>
-                    {name} —{" "}
-                    <strong>
-                      {Number.isInteger(quantity)
-                        ? quantity
-                        : quantity.toFixed(2)}
-                      {unit}
-                    </strong>
-                    <button
-                      onClick={() =>
-                        setRemovedIngredients((prev) => [...prev, key])
-                      }
-                      className="remove-ingredients-button"
-                      aria-label={`Remove ${name} from shopping list`}
-                    >
-                      ✖
-                    </button>
-                  </li>
-                ))}
-            </ul>
-            {removedIngredients.length > 0 && (
-              <button
-                onClick={() => setRemovedIngredients([])}
-                className="reset-remove-button"
-              >
-                Reset Removed Items
-              </button>
+          <ul>
+            {Object.entries(ingredientTotals).map(
+              ([key, { name, quantity, unit }]) => (
+                <li key={key}>
+                  {name} —{" "}
+                  {Number.isInteger(quantity) ? quantity : quantity.toFixed(2)}{" "}
+                  {unit}
+                </li>
+              )
             )}
-          </>
+          </ul>
         )}
       </div>
     </>
