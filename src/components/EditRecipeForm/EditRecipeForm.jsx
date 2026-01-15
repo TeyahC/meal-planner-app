@@ -39,18 +39,6 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       "⅓": 1 / 3,
       "⅔": 2 / 3,
     };
-
-    const normalizeQty = (q) => {
-      if (!q) return 1;
-      q = q.trim();
-      if (FRACTIONS[q]) return FRACTIONS[q];
-      if (q.includes("/")) {
-        const [a, b] = q.split("/").map(Number);
-        return a / b;
-      }
-      return parseFloat(q);
-    };
-
     const UNIT_LIST = [
       "ml",
       "g",
@@ -62,59 +50,61 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       "unit",
     ];
 
-    // Remove duplicates and empty lines
+    const normalizeQty = (q) => {
+      if (!q) return 1;
+      q = q.trim();
+      if (FRACTIONS[q]) return FRACTIONS[q];
+      if (q.includes("/")) {
+        const [a, b] = q.split("/").map(Number);
+        return a / b;
+      }
+      return Number(q);
+    };
+
     const lines = [
       ...new Set(
         text
           .split("\n")
-          .map((l) => l.trim())
+          .map((l) => l.replace(/[†]/g, "").trim())
           .filter(Boolean)
       ),
     ];
 
     return lines.map((line) => {
-      line = line.replace(/†/g, "").trim();
+      let quantity = 1;
+      let unit = "unit";
+      let name = line;
 
-      // 1) Match "Name (50ml)" or "Name (16g)"
-      const parenMatch = line.match(
-        /^(.+?)\s*\(([\d./½¼¾⅓⅔]+)\s*([a-zA-Z]+)\)$/
-      );
+      // Match quantity at the start (e.g., "2 garlic cloves")
+      const qtyMatch = line.match(/^([\d./½¼¾⅓⅔]+)\s+(.*)/);
+      if (qtyMatch) {
+        quantity = normalizeQty(qtyMatch[1]);
+        name = qtyMatch[2];
+      }
+
+      // Match xN at the end (e.g., "Cheddar cheese x2")
+      const xMatch = name.match(/(.*)\s+x(\d+)$/i);
+      if (xMatch) {
+        name = xMatch[1].trim();
+        quantity *= Number(xMatch[2]);
+      }
+
+      // Match (Npcs) or (Ng) in parentheses (e.g., "Chicken breast portions (2pcs)")
+      const parenMatch = name.match(/\((\d+)\s*(pcs?|units?|g|ml)\)/i);
       if (parenMatch) {
-        return {
-          name: parenMatch[1].trim(),
-          quantity: normalizeQty(parenMatch[2]),
-          unit: parenMatch[3],
-        };
+        quantity *= Number(parenMatch[1]);
+        name = name.replace(parenMatch[0], "").trim();
       }
 
-      // 2) Match "Name x3"
-      const countMatch = line.match(/^(.+?) x([\d./½¼¾⅓⅔]+)$/i);
-      if (countMatch) {
-        return {
-          name: countMatch[1].trim(),
-          quantity: normalizeQty(countMatch[2]),
-          unit: "unit",
-        };
+      // Check if the first word is a unit
+      const parts = name.split(/\s+/);
+      if (parts.length > 1 && UNIT_LIST.includes(parts[0].toLowerCase())) {
+        unit = parts[0].toLowerCase();
+        parts.shift();
+        name = parts.join(" ");
       }
 
-      // 3) Match "Quantity Unit Name" e.g., "2 tsp ground coriander"
-      const parts = line.split(/\s+/);
-      if (parts.length >= 2) {
-        const qty = normalizeQty(parts[0]);
-        const nextWord = parts[1].toLowerCase();
-        let unit = "unit";
-        let name = parts.slice(1).join(" ");
-
-        if (UNIT_LIST.includes(nextWord)) {
-          unit = nextWord;
-          name = parts.slice(2).join(" ");
-        }
-
-        return { quantity: qty, unit, name };
-      }
-
-      // 4) Default: 1 unit
-      return { quantity: 1, unit: "unit", name: line };
+      return { quantity, unit, name };
     });
   };
 
