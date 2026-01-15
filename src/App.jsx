@@ -2,82 +2,101 @@ import React, { useState, useEffect } from "react";
 import IngredientInput from "./components/IngredientInput/IngredientInput";
 import AllergyFilter from "./components/AllergyFilter/AllergyFilter";
 import RecipeList from "./components/RecipeList/RecipeList";
-import MealTypeFilter from "./components/MealTypeFilter/MealTypeFilter";
 import AddRecipeForm from "./components/AddRecipeForm/AddRecipeForm";
-import recipesData from "./data/recipes";
-import './styles/App.css';
-import './index.css';
-import { Routes, Route } from "react-router-dom";
-import RecipeDetails from "./components/RecipeDetails/RecipeDetails";
 import EditRecipeForm from "./components/EditRecipeForm/EditRecipeForm";
+import RecipeDetails from "./components/RecipeDetails/RecipeDetails";
 import WeekPlanner from "./components/WeekPlanner/WeekPlanner";
 import Header from "./components/Header/Header";
-import { ToastContainer, toast } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
-
-// ✅ Import Spoonacular component
-import ImportFromSpoonacular from "./components/ImportFromSpoonacular/ImportFromSpoonacular";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { Routes, Route } from "react-router-dom";
+import { supabase } from "./lib/supabase";
+import "./styles/App.css";
+import "./index.css";
 
 export default function App() {
   const [ingredients, setIngredients] = useState(() => {
     const saved = localStorage.getItem("ingredients");
     return saved ? JSON.parse(saved) : [];
   });
-
   const [allergies, setAllergies] = useState(() => {
     const saved = localStorage.getItem("allergies");
     return saved ? JSON.parse(saved) : [];
   });
-
-  const [mealType, setMealType] = useState("");
-  const [allRecipes, setAllRecipes] = useState(() => {
-    // Temporarily force loading from file to see new recipes
-    return recipesData;
-    // const saved = localStorage.getItem("allRecipes");
-    // return saved ? JSON.parse(saved) : recipesData;
-  });
-
-  const [filteredRecipes, setFilteredRecipes] = useState(allRecipes);
-  const [showForm, setShowForm] = useState(false);
+  const [allRecipes, setAllRecipes] = useState([]);
+  const [filteredRecipes, setFilteredRecipes] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [showingAll, setShowingAll] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState(null);
-
   const [shoppingList, setShoppingList] = useState(() => {
     const saved = localStorage.getItem("shoppingList");
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Fetch recipes from Supabase
+  useEffect(() => {
+    const fetchRecipes = async () => {
+      const { data, error } = await supabase.from("recipes").select("*");
+      if (!error && data) {
+        const parsedData = data.map((r) => ({
+          ...r,
+          ingredients:
+            typeof r.ingredients === "string"
+              ? JSON.parse(r.ingredients)
+              : r.ingredients,
+          allergies:
+            typeof r.allergies === "string"
+              ? JSON.parse(r.allergies)
+              : r.allergies,
+        }));
+        setAllRecipes(parsedData);
+        setFilteredRecipes(parsedData);
+      } else {
+        console.error("Error fetching recipes:", error);
+      }
+    };
+    fetchRecipes();
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("shoppingList", JSON.stringify(shoppingList));
   }, [shoppingList]);
 
-  function countMissingIngredients(recipeIngredients, pantry) {
-    return recipeIngredients.filter((recipeIng) => {
-      const recipeName = typeof recipeIng === "string" ? recipeIng.toLowerCase().trim() : recipeIng.name.toLowerCase().trim();
-      return !pantry.some((item) => item.toLowerCase().trim() === recipeName);
+  const countMissingIngredients = (recipeIngredients, pantry) =>
+    recipeIngredients.filter((ri) => {
+      const name =
+        typeof ri === "string"
+          ? ri.toLowerCase().trim()
+          : ri.name?.toLowerCase().trim() || "";
+      return !pantry.some((p) => p.toLowerCase().trim() === name);
     }).length;
-  }
 
+  // Filter recipes whenever ingredients, allergies, search, or recipes change
   useEffect(() => {
-    localStorage.setItem("ingredients", JSON.stringify(ingredients));
-    localStorage.setItem("allergies", JSON.stringify(allergies));
-    localStorage.setItem("allRecipes", JSON.stringify(allRecipes));
+    if (!allRecipes.length) return;
 
-    let filtered = showingAll ? allRecipes : allRecipes.filter((recipe) => {
-      const missingCount = countMissingIngredients(recipe.ingredients, ingredients);
+    let filtered = allRecipes.filter((r) => {
+      // Ingredient match: allow up to 2 missing
+      const missingCount = countMissingIngredients(r.ingredients, ingredients);
       const matchesIngredients = ingredients.length === 0 || missingCount <= 2;
-      const matchesAllergies = allergies.length === 0 || !recipe.allergies.some((a) => allergies.includes(a));
-      const matchesMealType = mealType === "" || recipe.category === mealType;
-      return matchesIngredients && matchesAllergies && matchesMealType;
+
+      // Allergy match
+      const matchesAllergies =
+        allergies.length === 0 ||
+        !r.allergies.some((a) =>
+          allergies.map((x) => x.toLowerCase()).includes(a.toLowerCase())
+        );
+
+      return matchesIngredients && matchesAllergies;
     });
 
-    if (searchTerm.trim() !== "") {
+    // Search filter
+    if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
-        (recipe) =>
-          recipe.name.toLowerCase().includes(term) ||
-          recipe.ingredients.some((ing) => {
+        (r) =>
+          r.name.toLowerCase().includes(term) ||
+          r.ingredients.some((ing) => {
             const name = typeof ing === "string" ? ing : ing.name || "";
             return name.toLowerCase().includes(term);
           })
@@ -85,80 +104,64 @@ export default function App() {
     }
 
     setFilteredRecipes(filtered);
-  }, [ingredients, allergies, mealType, allRecipes, searchTerm, showingAll]);
+  }, [ingredients, allergies, searchTerm, allRecipes]);
 
-  const addIngredient = (newIngredient) => {
-    if (!ingredients.includes(newIngredient.toLowerCase())) {
-      setIngredients([...ingredients, newIngredient.toLowerCase()]);
-    }
+  // Handlers
+  const addIngredient = (newIng) => {
+    if (!ingredients.includes(newIng.toLowerCase()))
+      setIngredients([...ingredients, newIng.toLowerCase()]);
   };
-
-  const deleteIngredient = (ingredientToDelete) => {
-    setIngredients(ingredients.filter((item) => item !== ingredientToDelete));
-  };
-
+  const deleteIngredient = (ing) =>
+    setIngredients(ingredients.filter((i) => i !== ing));
   const toggleAllergy = (allergy) => {
-    if (allergies.includes(allergy)) {
-      setAllergies(allergies.filter((a) => a !== allergy));
-    } else {
-      setAllergies([...allergies, allergy]);
-    }
+    setAllergies(
+      allergies.includes(allergy)
+        ? allergies.filter((a) => a !== allergy)
+        : [...allergies, allergy]
+    );
   };
-
-  const toggleForm = () => {
-    setShowForm(prev => !prev);
-  };
-
-  const addUserRecipe = (newRecipe) => {
-    const updated = [...allRecipes, newRecipe];
+  const toggleForm = () => setShowForm((prev) => !prev);
+  const addUserRecipe = (recipe) => {
+    const updated = [...allRecipes, recipe];
     setAllRecipes(updated);
     setFilteredRecipes(updated);
-    localStorage.setItem("allRecipes", JSON.stringify(updated));
   };
-
   const handleDeleteRecipe = (id) => {
-    const updatedRecipes = allRecipes.filter(recipe => recipe.id !== id);
-    setAllRecipes(updatedRecipes);
-    setFilteredRecipes(updatedRecipes);
-    localStorage.setItem("allRecipes", JSON.stringify(updatedRecipes));
+    const updated = allRecipes.filter((r) => r.id !== id);
+    setAllRecipes(updated);
+    setFilteredRecipes(updated);
   };
-
   const startEditingRecipe = (recipe) => {
     setEditingRecipe(recipe);
     setShowForm(false);
   };
-
   const updateRecipe = (updatedRecipe) => {
-    const updatedAllRecipes = allRecipes.map(r =>
+    const updated = allRecipes.map((r) =>
       r.id === updatedRecipe.id ? updatedRecipe : r
     );
-    setAllRecipes(updatedAllRecipes);
-    setFilteredRecipes(updatedAllRecipes);
+    setAllRecipes(updated);
+    setFilteredRecipes(updated);
     setEditingRecipe(null);
   };
-
-  const cancelEditing = () => {
-    setEditingRecipe(null);
-  };
-
-  const handleAddToShoppingList = (missingItems) => {
+  const cancelEditing = () => setEditingRecipe(null);
+  const handleAddToShoppingList = (items) => {
     setShoppingList((prev) => {
       const updated = [...prev];
-      let addedCount = 0;
-
-      missingItems.forEach(item => {
-        if (!updated.find(i => i.name.toLowerCase() === item.name.toLowerCase())) {
-          updated.push(item);
-          addedCount++;
+      let count = 0;
+      items.forEach((i) => {
+        if (
+          !updated.find((x) => x.name.toLowerCase() === i.name.toLowerCase())
+        ) {
+          updated.push(i);
+          count++;
         }
       });
-
-      if (addedCount > 0) {
-        toast.success(`${addedCount} item${addedCount > 1 ? "s" : ""} added to shopping list.`);
-      } else {
+      if (count > 0)
+        toast.success(
+          `${count} item${count > 1 ? "s" : ""} added to shopping list.`
+        );
+      else
         toast.info("All missing ingredients are already in the shopping list.");
-      }
-
       return updated;
     });
   };
@@ -167,7 +170,6 @@ export default function App() {
     <div className="app-container">
       <Header />
       <h2>Recipe Manager</h2>
-
       <Routes>
         <Route
           path="/"
@@ -178,13 +180,12 @@ export default function App() {
                 <div className="left-panel">
                   <h2>Ingredients in your cupboard:</h2>
                   <ul className="ingredient-list">
-                    {ingredients.map((item) => (
-                      <li key={item}>
-                        {item}
+                    {ingredients.map((i) => (
+                      <li key={i}>
+                        {i}
                         <button
-                          onClick={() => deleteIngredient(item)}
+                          onClick={() => deleteIngredient(i)}
                           className="delete-button"
-                          aria-label={`Delete ${item}`}
                         >
                           ✕
                         </button>
@@ -192,18 +193,11 @@ export default function App() {
                     ))}
                   </ul>
                 </div>
-
                 <div className="right-panel">
                   <AllergyFilter
                     selectedAllergies={allergies}
                     onToggleAllergy={toggleAllergy}
                   />
-
-                  <MealTypeFilter
-                    selectedType={mealType}
-                    onSelectType={setMealType}
-                  />
-
                   <input
                     type="search"
                     placeholder="Search recipes by name or ingredient..."
@@ -211,48 +205,17 @@ export default function App() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     style={{
                       padding: "0.6rem",
-                      fontSize: "1rem",
                       width: "100%",
                       maxWidth: "400px",
                       marginBottom: "1rem",
                       borderRadius: "8px",
                       border: "1px solid #ccc",
                     }}
-                    aria-label="Search recipes"
                   />
-
-                  <div className="filter-buttons">
-                    <button
-                      onClick={() => {
-                        setAllergies([]);
-                        setMealType("");
-                      }}
-                      className="clear-button"
-                    >
-                      Clear All Filters
-                    </button>
-
-                    <button
-                      onClick={() => setShowingAll(allRecipes)}
-                      className="show-all-button"
-                    >
-                      Show All Recipes
-                    </button>
-                    {showingAll && (
-                      <button
-                        onClick={() => setShowingAll(false)}
-                        className="clear-button"
-                      >
-                        Back to Filtered View
-                      </button>
-                    )}
-                  </div>
-
                   <div style={{ marginBottom: "2rem" }}>
                     <button onClick={toggleForm} className="add-new-button">
                       {showForm ? "Close Recipe Form" : "Add New Recipe"}
                     </button>
-
                     {editingRecipe ? (
                       <EditRecipeForm
                         initialRecipe={editingRecipe}
@@ -262,9 +225,7 @@ export default function App() {
                     ) : (
                       showForm && <AddRecipeForm onAddRecipe={addUserRecipe} />
                     )}
-
                   </div>
-
                   <RecipeList
                     recipes={filteredRecipes}
                     onDeleteRecipe={handleDeleteRecipe}
@@ -282,7 +243,10 @@ export default function App() {
           path="/recipe/:id"
           element={<RecipeDetails recipes={allRecipes} />}
         />
-        <Route path="/week-planner" element={<WeekPlanner recipes={allRecipes} />} />
+        <Route
+          path="/week-planner"
+          element={<WeekPlanner recipes={allRecipes} />}
+        />
       </Routes>
     </div>
   );

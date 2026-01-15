@@ -351,13 +351,15 @@ export default function WeekPlanner() {
                           {...provided.dragHandleProps}
                           className="draggable-recipe"
                         >
-                          <h4>{recipe.name}</h4>
                           <p>
                             <strong>Calories:</strong> {recipe.calories || 0}{" "}
                             kcal
                           </p>
                           <p>
                             <strong>Protein:</strong> {recipe.protein || 0} g
+                          </p>
+                          <p>
+                            <strong>Fibre:</strong> {recipe.fibre || 0} g
                           </p>
                         </div>
                       )}

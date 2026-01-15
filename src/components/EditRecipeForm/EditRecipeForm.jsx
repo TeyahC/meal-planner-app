@@ -10,6 +10,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
   const [servings, setServings] = useState(1);
   const [calories, setCalories] = useState("");
   const [protein, setProtein] = useState("");
+  const [fibre, setFibre] = useState("");
   const [loading, setLoading] = useState(false);
 
   /* ---------------- LOAD INITIAL RECIPE ---------------- */
@@ -28,6 +29,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
     setServings(initialRecipe.servings || 1);
     setCalories(initialRecipe.calories || "");
     setProtein(initialRecipe.protein || "");
+    setFibre(initialRecipe.fibre || "");
   }, [initialRecipe]);
 
   /* ---------------- INGREDIENT PARSER ---------------- */
@@ -51,34 +53,15 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       return Number(q);
     };
 
-    const UNIT_LIST = [
-      "ml",
-      "g",
-      "kg",
-      "tsp",
-      "tbsp",
-      "clove",
-      "cloves",
-      "pcs",
-      "pc",
-      "piece",
-      "pieces",
-      "portion",
-      "portions",
-      "unit",
-    ];
-
     const normalizeUnit = (u) => {
       if (!u) return "unit";
       u = u.toLowerCase();
       if (u === "grams" || u === "gram") return "g";
-      if (u === "milliliters" || u === "millilitre" || u === "milliliters")
-        return "ml";
+      if (u === "milliliters" || u === "millilitre") return "ml";
       if (u === "teaspoon" || u === "teaspoons") return "tsp";
       if (u === "tablespoon" || u === "tablespoons") return "tbsp";
-      if (u === "pcs" || u === "pc" || u === "piece" || u === "pieces")
-        return "unit";
-      if (u === "cloves" || u === "clove") return "clove";
+      if (["pcs", "pc", "piece", "pieces"].includes(u)) return "unit";
+      if (["clove", "cloves"].includes(u)) return "clove";
       if (u === "kg") return "kg";
       return u;
     };
@@ -86,7 +69,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
     const parseQtyUnit = (s) => {
       if (!s) return null;
       s = s.trim();
-      // handle fractions like 1/2 or unicode fractions
+
       const fracMatch = s.match(/^([\d]+\/[\d]+|[½¼¾⅓⅔])\s*([a-zA-Z]+)?/);
       if (fracMatch) {
         return {
@@ -95,7 +78,6 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
         };
       }
 
-      // number attached to unit e.g. 50ml
       const attached = s.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)\b/);
       if (attached) {
         return {
@@ -104,35 +86,30 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
         };
       }
 
-      // number + optional unit separated by space e.g. '50 ml' or '2 tsp'
       const parts = s.split(/\s+/);
       const num = parts.find((p) =>
         /^(?:\d+(?:\.\d+)?|[½¼¾⅓⅔]|\d+\/\d+)$/.test(p)
       );
       if (num) {
         const idx = parts.indexOf(num);
-        const unit = parts[idx + 1];
-        return { quantity: normalizeQty(num), unit: normalizeUnit(unit) };
+        return {
+          quantity: normalizeQty(num),
+          unit: normalizeUnit(parts[idx + 1]),
+        };
       }
 
       return null;
     };
 
-    return [
-      ...new Set(
-        text
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean)
-      ),
-    ]
-      .map((raw) => raw.replace(/[†]/g, "").trim())
+    return text
+      .split("\n")
+      .map((line) => line.replace(/[†]/g, "").trim())
+      .filter(Boolean)
       .map((line) => {
         let quantity = null;
         let unit = null;
         let name = line;
 
-        // extract trailing multiplier e.g. 'x2' or '×2'
         const multMatch = name.match(/\b[x×]\s*(\d+(?:\.\d+)?)$/i);
         let multiplier = 1;
         if (multMatch) {
@@ -140,69 +117,28 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
           name = name.slice(0, multMatch.index).trim();
         }
 
-        // find parenthesis content and try to parse quantity/unit from it
         const parenMatch = name.match(/\(([^)]+)\)/);
-        let parenParsed = null;
         if (parenMatch) {
-          parenParsed = parseQtyUnit(parenMatch[1]);
-          if (parenParsed) {
-            // if parentheses contain a measurement (g/ml/tsp/tbsp/kg) prefer that
-            const isMeasurement = ["g", "ml", "tsp", "tbsp", "kg"].includes(
-              parenParsed.unit
-            );
-            if (isMeasurement) {
-              quantity = parenParsed.quantity * multiplier;
-              unit = parenParsed.unit;
-              // remove parentheses from name
-              name = name.replace(parenMatch[0], "").trim();
-            } else {
-              // treat as piece count e.g. (2pcs)
-              quantity = parenParsed.quantity * multiplier;
-              unit = "unit";
-              name = name.replace(parenMatch[0], "").trim();
-            }
-          } else {
-            // remove parentheses if not useful
+          const parsed = parseQtyUnit(parenMatch[1]);
+          if (parsed) {
+            quantity = parsed.quantity * multiplier;
+            unit = parsed.unit || "unit";
             name = name.replace(parenMatch[0], "").trim();
           }
         }
 
-        // if still no quantity, check for leading quantity (e.g., '2 tsp ...' or '16g tomato')
         if (quantity == null) {
-          // leading attached unit: 50ml mayonnaise
-          const leadAttached = name.match(
-            /^(\d+(?:\.\d+)?)([a-zA-Z]+)\b\s*(.*)/
-          );
-          if (leadAttached) {
-            quantity = Number(leadAttached[1]) * multiplier;
-            unit = normalizeUnit(leadAttached[2]);
-            name = (leadAttached[3] || "").trim();
-          } else {
-            // leading number separated: '2 tsp garlic'
-            const lead = name.match(/^([\d./½¼¾⅓⅔]+)\s*([a-zA-Z]+)?\s*(.*)$/);
-            if (lead) {
-              quantity = normalizeQty(lead[1]) * multiplier;
-              unit = normalizeUnit(lead[2]);
-              name = (lead[3] || "").trim();
-            }
+          const lead = name.match(/^([\d./½¼¾⅓⅔]+)\s*([a-zA-Z]+)?\s*(.*)$/);
+          if (lead) {
+            quantity = normalizeQty(lead[1]) * multiplier;
+            unit = normalizeUnit(lead[2]);
+            name = (lead[3] || "").trim();
           }
         }
 
-        // if still no quantity but multiplier exists (e.g., 'White potato x3')
-        if (
-          (quantity == null || isNaN(quantity)) &&
-          multiplier &&
-          multiplier !== 1
-        ) {
-          quantity = multiplier;
-          unit = "unit";
-        }
-
-        // fallback defaults
-        if (quantity == null || isNaN(quantity)) quantity = 1;
+        if (quantity == null || isNaN(quantity)) quantity = multiplier || 1;
         if (!unit) unit = "unit";
 
-        // clean name: remove common trailing words like 'x2', 'pcs', 'portion(s)'
         name = name
           .replace(/\bx\s*\d+$/i, "")
           .replace(/\bpcs?\b/i, "")
@@ -212,10 +148,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
           .replace(/[\-–—_,]+$/g, "")
           .trim();
 
-        // if name becomes empty, set a generic name
-        if (!name) name = line;
-
-        return { quantity, unit, name };
+        return { quantity, unit, name: name || line };
       });
   };
 
@@ -226,7 +159,6 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
 
     const parsedIngredients = parseIngredients(ingredients);
 
-    // Normalize quantities by servings
     const normalizedIngredients = parsedIngredients.map(
       ({ name, quantity, unit }) => ({
         name,
@@ -246,6 +178,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       servings,
       calories: Number(calories),
       protein: Number(protein),
+      fibre: Number(fibre),
     };
 
     const { data, error } = await supabase
@@ -279,11 +212,11 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       />
 
       <textarea
-        placeholder="Ingredients (one per line, e.g., 'Cayenne pepper (0.5tsp)' or 'White potato x3')"
+        placeholder="Ingredients (one per line)"
         value={ingredients}
         onChange={(e) => setIngredients(e.target.value)}
-        required
         rows={8}
+        required
       />
 
       <input
@@ -297,25 +230,20 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
         placeholder="Instructions"
         value={instructions}
         onChange={(e) => setInstructions(e.target.value)}
-        required
         rows={5}
+        required
       />
 
-      <label htmlFor="servings-input">Servings (number of people):</label>
+      <label>Servings</label>
       <input
-        id="servings-input"
         type="number"
         min="1"
         value={servings}
-        onChange={(e) =>
-          setServings(Math.max(1, parseInt(e.target.value) || 1))
-        }
-        required
+        onChange={(e) => setServings(Math.max(1, Number(e.target.value) || 1))}
       />
 
-      <label htmlFor="calories-input">Calories per portion:</label>
+      <label>Calories per portion</label>
       <input
-        id="calories-input"
         type="number"
         min="0"
         value={calories}
@@ -323,14 +251,22 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
         required
       />
 
-      <label htmlFor="protein-input">Protein (g) per portion:</label>
+      <label>Protein (g) per portion</label>
       <input
-        id="protein-input"
         type="number"
         min="0"
         value={protein}
         onChange={(e) => setProtein(e.target.value)}
         required
+      />
+
+      <label>Fibre (g) per portion</label>
+      <input
+        type="number"
+        min="0"
+        step="0.1"
+        value={fibre}
+        onChange={(e) => setFibre(e.target.value)}
       />
 
       <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>

@@ -41,7 +41,6 @@ export default function RecipeList({
     if (error) {
       alert("Failed to delete recipe: " + error.message);
     } else {
-      // Update UI immediately
       setRecipes((prev) => prev.filter((r) => r.id !== id));
       alert("Recipe deleted!");
     }
@@ -50,7 +49,7 @@ export default function RecipeList({
   if (loading) return <p>Loading recipes...</p>;
   if (recipes.length === 0) return <p>No recipes found.</p>;
 
-  /* ---------------- HELPER ---------------- */
+  /* ---------------- HELPERS ---------------- */
   const getMissingIngredients = (recipeIngredients, pantryList) => {
     return recipeIngredients.filter((ri) => {
       const recipeName = ri.name.toLowerCase().trim();
@@ -62,12 +61,14 @@ export default function RecipeList({
   return (
     <div className="recipe-list">
       {recipes.map((recipe) => {
-        const { id, name, ingredients, calories, protein, allergies } = recipe;
+        const { id, name, ingredients, calories, protein, fibre, allergies } =
+          recipe;
 
         const missing = getMissingIngredients(
           ingredients || [],
           pantryIngredients || []
         );
+
         const matchedCount = (ingredients?.length || 0) - missing.length;
 
         const ingredientList = (ingredients || [])
@@ -80,24 +81,34 @@ export default function RecipeList({
           <div key={id} className="recipe-card">
             <Link to={`/recipe/${id}`} tabIndex={0}>
               <h3>{name}</h3>
+
               <p>
                 <strong>Ingredients:</strong> {ingredientList}
               </p>
+
               <p>
                 <strong>Calories per portion:</strong> {calories || 0} kcal
               </p>
+
               <p>
                 <strong>Protein per portion:</strong> {protein || 0} g
               </p>
+
+              <p>
+                <strong>Fibre per portion:</strong> {fibre || 0} g
+              </p>
+
               {allergyList && (
                 <p>
                   <strong>Allergies:</strong> {allergyList}
                 </p>
               )}
+
               <p>
                 <strong>Pantry match:</strong> {matchedCount} /{" "}
                 {ingredients?.length || 0} ingredients
               </p>
+
               {missing.length > 0 && (
                 <p className="missing-ingredients">
                   <strong>You need:</strong>{" "}

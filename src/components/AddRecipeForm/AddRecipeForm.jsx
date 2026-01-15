@@ -10,6 +10,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
   const [servings, setServings] = useState(1);
   const [calories, setCalories] = useState("");
   const [protein, setProtein] = useState("");
+  const [fibre, setFibre] = useState("");
   const [recipeUrl, setRecipeUrl] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -77,10 +78,12 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
       if (!u) return "unit";
       u = u.toLowerCase();
       if (u === "grams" || u === "gram") return "g";
-      if (u === "milliliters" || u === "millilitre" || u === "milliliters") return "ml";
+      if (u === "milliliters" || u === "millilitre" || u === "milliliters")
+        return "ml";
       if (u === "teaspoon" || u === "teaspoons") return "tsp";
       if (u === "tablespoon" || u === "tablespoons") return "tbsp";
-      if (u === "pcs" || u === "pc" || u === "piece" || u === "pieces") return "unit";
+      if (u === "pcs" || u === "pc" || u === "piece" || u === "pieces")
+        return "unit";
       if (u === "cloves" || u === "clove") return "clove";
       if (u === "kg") return "kg";
       return u;
@@ -92,18 +95,26 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
       // handle fractions like 1/2 or unicode fractions
       const fracMatch = s.match(/^([\d]+\/[\d]+|[½¼¾⅓⅔])\s*([a-zA-Z]+)?/);
       if (fracMatch) {
-        return { quantity: normalizeQty(fracMatch[1]), unit: normalizeUnit(fracMatch[2]) };
+        return {
+          quantity: normalizeQty(fracMatch[1]),
+          unit: normalizeUnit(fracMatch[2]),
+        };
       }
 
       // number attached to unit e.g. 50ml
       const attached = s.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)\b/);
       if (attached) {
-        return { quantity: Number(attached[1]), unit: normalizeUnit(attached[2]) };
+        return {
+          quantity: Number(attached[1]),
+          unit: normalizeUnit(attached[2]),
+        };
       }
 
       // number + optional unit separated by space e.g. '50 ml' or '2 tsp'
       const parts = s.split(/\s+/);
-      const num = parts.find((p) => /^(?:\d+(?:\.\d+)?|[½¼¾⅓⅔]|\d+\/\d+)$/.test(p));
+      const num = parts.find((p) =>
+        /^(?:\d+(?:\.\d+)?|[½¼¾⅓⅔]|\d+\/\d+)$/.test(p)
+      );
       if (num) {
         const idx = parts.indexOf(num);
         const unit = parts[idx + 1];
@@ -142,7 +153,9 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
           parenParsed = parseQtyUnit(parenMatch[1]);
           if (parenParsed) {
             // if parentheses contain a measurement (g/ml/tsp/tbsp/kg) prefer that
-            const isMeasurement = ["g", "ml", "tsp", "tbsp", "kg"].includes(parenParsed.unit);
+            const isMeasurement = ["g", "ml", "tsp", "tbsp", "kg"].includes(
+              parenParsed.unit
+            );
             if (isMeasurement) {
               quantity = parenParsed.quantity * multiplier;
               unit = parenParsed.unit;
@@ -163,7 +176,9 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         // if still no quantity, check for leading quantity (e.g., '2 tsp ...' or '16g tomato')
         if (quantity == null) {
           // leading attached unit: 50ml mayonnaise
-          const leadAttached = name.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)\b\s*(.*)/);
+          const leadAttached = name.match(
+            /^(\d+(?:\.\d+)?)([a-zA-Z]+)\b\s*(.*)/
+          );
           if (leadAttached) {
             quantity = Number(leadAttached[1]) * multiplier;
             unit = normalizeUnit(leadAttached[2]);
@@ -180,7 +195,11 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         }
 
         // if still no quantity but multiplier exists (e.g., 'White potato x3')
-        if ((quantity == null || isNaN(quantity)) && multiplier && multiplier !== 1) {
+        if (
+          (quantity == null || isNaN(quantity)) &&
+          multiplier &&
+          multiplier !== 1
+        ) {
           quantity = multiplier;
           unit = "unit";
         }
@@ -258,6 +277,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
       servings,
       calories: Number(calories),
       protein: Number(protein),
+      fibre: Number(fibre),
     };
 
     let error;
@@ -285,6 +305,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         setCalories("");
         setProtein("");
         setRecipeUrl("");
+        setFibre("");
       }
     }
   };
@@ -350,6 +371,15 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         value={protein}
         onChange={(e) => setProtein(e.target.value)}
         required
+      />
+
+      <label>Fibre (g) per portion</label>
+      <input
+        type="number"
+        min="0"
+        step="0.1"
+        value={fibre}
+        onChange={(e) => setFibre(e.target.value)}
       />
 
       <button type="submit" disabled={loading}>
