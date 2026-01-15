@@ -695,3 +695,114 @@
   text-align: center;
   padding: 0.2rem;
 }
+
+/* =========================
+   MOBILE & TABLET SUPPORT
+   ========================= */
+
+/* Tablets & smaller */
+@media (max-width: 1024px) {
+  .planner-layout {
+    flex-direction: column;
+  }
+
+  .recipe-sidebar {
+    max-width: 100%;
+    width: 100%;
+    order: -1; /* sidebar on top */
+  }
+
+  .week-grid {
+    grid-template-columns: repeat(2, 1fr);
+    min-width: 0;
+  }
+}
+
+/* Phones */
+@media (max-width: 640px) {
+  .planner-container {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  /* One day per row */
+  .week-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .day-column {
+    padding: 0.75rem;
+  }
+
+  .day-column h3 {
+    font-size: 1rem;
+  }
+
+  .meal-slot {
+    min-height: 55px;
+    padding: 0.5rem;
+  }
+
+  .assigned-recipe {
+    font-size: 0.75rem;
+    padding: 0.5rem;
+    max-height: none; /* allow scrolling naturally */
+  }
+
+  .assigned-recipe ul {
+    max-height: 120px;
+  }
+
+  .assigned-recipe input[type="number"] {
+    width: 45px;
+    font-size: 0.8rem;
+  }
+
+  /* Sidebar recipes easier to tap */
+  .recipe-sidebar > div {
+    grid-template-columns: 1fr;
+  }
+
+  .draggable-recipe {
+    font-size: 0.9rem;
+    padding: 0.75rem;
+  }
+
+  /* Week selector buttons */
+  .week-selector {
+    justify-content: center;
+  }
+
+  .week-button,
+  .add-week-button {
+    min-width: auto;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .week-name {
+    width: 80px;
+  }
+
+  /* Shopping list spacing */
+  .shopping-list {
+    padding: 1.25rem;
+    margin-top: 2rem;
+  }
+
+  .shopping-list h3 {
+    font-size: 1.2rem;
+  }
+}
+
+/* Touch devices – remove hover lift */
+@media (hover: none) {
+  .day-column:hover,
+  .draggable-recipe:hover,
+  .recipe-sidebar:hover,
+  .shopping-list:hover {
+    transform: none;
+    box-shadow: inherit;
+  }
+}
