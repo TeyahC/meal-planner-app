@@ -7,8 +7,10 @@ export default function RecipeList({
   pantryIngredients,
   onAddMissingToList,
   onEditRecipe,
+  onDeleteRecipe,
+  recipes: propRecipes,
 }) {
-  const [recipes, setRecipes] = useState([]);
+  const [recipes, setRecipes] = useState(propRecipes || []);
   const [loading, setLoading] = useState(true);
 
   /* ---------------- FETCH RECIPES ---------------- */
@@ -29,8 +31,19 @@ export default function RecipeList({
   };
 
   useEffect(() => {
-    fetchRecipes();
+    // If parent passed recipes, use those; otherwise fetch from DB
+    if (propRecipes && propRecipes.length) {
+      setRecipes(propRecipes);
+      setLoading(false);
+    } else {
+      fetchRecipes();
+    }
   }, []);
+
+  // watch for propRecipes updates
+  useEffect(() => {
+    if (propRecipes) setRecipes(propRecipes);
+  }, [propRecipes]);
 
   /* ---------------- DELETE RECIPE ---------------- */
   const handleDelete = async (id) => {
@@ -47,7 +60,7 @@ export default function RecipeList({
   };
 
   if (loading) return <p>Loading recipes...</p>;
-  if (recipes.length === 0) return <p>No recipes found.</p>;
+  if (!recipes || recipes.length === 0) return <p>No recipes found.</p>;
 
   /* ---------------- HELPERS ---------------- */
   const getMissingIngredients = (recipeIngredients, pantryList) => {
@@ -117,24 +130,30 @@ export default function RecipeList({
               )}
             </Link>
 
-            {missing.length > 0 && missing.length <= 2 && (
-              <button
-                onClick={() => onAddMissingToList(missing)}
-                className="add-missing-button"
-              >
-                Add Missing Ingredients to Shopping List
-              </button>
-            )}
+            {missing.length > 0 &&
+              missing.length <= 2 &&
+              onAddMissingToList && (
+                <button
+                  onClick={() => onAddMissingToList(missing)}
+                  className="add-missing-button"
+                >
+                  Add Missing Ingredients to Shopping List
+                </button>
+              )}
 
             <div className="card-buttons">
               <button
-                onClick={() => onEditRecipe(recipe)}
+                onClick={() => onEditRecipe && onEditRecipe(recipe)}
                 className="edit-button"
               >
                 Edit
               </button>
               <button
-                onClick={() => handleDelete(id)}
+                onClick={() => {
+                  // delete locally and call parent's delete handler if present
+                  handleDelete(id);
+                  onDeleteRecipe && onDeleteRecipe(id);
+                }}
                 className="delete2-button"
               >
                 Delete

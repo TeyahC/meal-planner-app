@@ -28,29 +28,25 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState(null);
-  const [shoppingList, setShoppingList] = useState(() => {
-    const saved = localStorage.getItem("shoppingList");
-    return saved ? JSON.parse(saved) : [];
-  });
 
-  // Fetch recipes from Supabase
+  // Fetch recipes once
   useEffect(() => {
     const fetchRecipes = async () => {
       const { data, error } = await supabase.from("recipes").select("*");
       if (!error && data) {
-        const parsedData = data.map((r) => ({
+        // Parse JSON fields only once
+        const parsed = data.map((r) => ({
           ...r,
           ingredients:
             typeof r.ingredients === "string"
               ? JSON.parse(r.ingredients)
-              : r.ingredients,
+              : r.ingredients || [],
           allergies:
             typeof r.allergies === "string"
               ? JSON.parse(r.allergies)
-              : r.allergies,
+              : r.allergies || [],
         }));
-        setAllRecipes(parsedData);
-        setFilteredRecipes(parsedData);
+        setAllRecipes(parsed);
       } else {
         console.error("Error fetching recipes:", error);
       }
@@ -58,79 +54,79 @@ export default function App() {
     fetchRecipes();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("shoppingList", JSON.stringify(shoppingList));
-  }, [shoppingList]);
-
-  const countMissingIngredients = (recipeIngredients, pantry) =>
-    recipeIngredients.filter((ri) => {
-      const name =
-        typeof ri === "string"
-          ? ri.toLowerCase().trim()
-          : ri.name?.toLowerCase().trim() || "";
-      return !pantry.some((p) => p.toLowerCase().trim() === name);
-    }).length;
-
-  // Filter recipes whenever ingredients, allergies, search, or recipes change
+  // Filter recipes dynamically based on ingredients, allergies, searchTerm
   useEffect(() => {
     if (!allRecipes.length) return;
 
-    let filtered = allRecipes.filter((r) => {
-      // Ingredient match: allow up to 2 missing
-      const missingCount = countMissingIngredients(r.ingredients, ingredients);
+    const term = searchTerm.toLowerCase();
+
+    const filtered = allRecipes.filter((r) => {
+      // Ingredient filter: allow up to 2 missing ingredients
+      const missingCount = r.ingredients.filter((ing) => {
+        const name =
+          typeof ing === "string"
+            ? ing.toLowerCase().trim()
+            : ing.name.toLowerCase().trim();
+        return !ingredients.some((i) => i.toLowerCase().trim() === name);
+      }).length;
       const matchesIngredients = ingredients.length === 0 || missingCount <= 2;
 
-      // Allergy match
-      const matchesAllergies =
-        allergies.length === 0 ||
-        !r.allergies.some((a) =>
-          allergies.map((x) => x.toLowerCase()).includes(a.toLowerCase())
-        );
-
-      return matchesIngredients && matchesAllergies;
-    });
-
-    // Search filter
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (r) =>
-          r.name.toLowerCase().includes(term) ||
-          r.ingredients.some((ing) => {
-            const name = typeof ing === "string" ? ing : ing.name || "";
-            return name.toLowerCase().includes(term);
-          })
+      // Allergy filter (case-insensitive)
+      // Allergy filter: exclude recipes that contain any selected allergy
+      const normalizedRecipeAllergies = (r.allergies || []).map((a) =>
+        a.toLowerCase()
       );
-    }
+      const normalizedAllergies = (allergies || []).map((a) => a.toLowerCase());
+      const matchesAllergies =
+        normalizedAllergies.length === 0 ||
+        !normalizedRecipeAllergies.some((a) => normalizedAllergies.includes(a));
+
+      // Search filter: recipe name or ingredients
+      const matchesSearch =
+        term === "" ||
+        r.name.toLowerCase().includes(term) ||
+        r.ingredients.some((ing) => {
+          const name = typeof ing === "string" ? ing : ing.name || "";
+          return name.toLowerCase().includes(term);
+        });
+
+      return matchesIngredients && matchesAllergies && matchesSearch;
+    });
 
     setFilteredRecipes(filtered);
   }, [ingredients, allergies, searchTerm, allRecipes]);
 
+  // persist ingredients and allergies
+  useEffect(() => {
+    localStorage.setItem("ingredients", JSON.stringify(ingredients || []));
+  }, [ingredients]);
+  useEffect(() => {
+    localStorage.setItem("allergies", JSON.stringify(allergies || []));
+  }, [allergies]);
+
   // Handlers
   const addIngredient = (newIng) => {
-    if (!ingredients.includes(newIng.toLowerCase()))
-      setIngredients([...ingredients, newIng.toLowerCase()]);
+    const lower = newIng.toLowerCase();
+    if (!ingredients.includes(lower)) setIngredients([...ingredients, lower]);
   };
   const deleteIngredient = (ing) =>
     setIngredients(ingredients.filter((i) => i !== ing));
-  const toggleAllergy = (allergy) => {
+  const toggleAllergy = (allergy) =>
     setAllergies(
       allergies.includes(allergy)
         ? allergies.filter((a) => a !== allergy)
         : [...allergies, allergy]
     );
-  };
   const toggleForm = () => setShowForm((prev) => !prev);
-  const addUserRecipe = (recipe) => {
-    const updated = [...allRecipes, recipe];
-    setAllRecipes(updated);
-    setFilteredRecipes(updated);
+  const clearFilters = () => {
+    setIngredients([]);
+    setAllergies([]);
+    setSearchTerm("");
+    // localStorage will be updated by effects that watch these states
   };
-  const handleDeleteRecipe = (id) => {
-    const updated = allRecipes.filter((r) => r.id !== id);
-    setAllRecipes(updated);
-    setFilteredRecipes(updated);
-  };
+  const addUserRecipe = (recipe) => setAllRecipes([...allRecipes, recipe]);
+  const handleDeleteRecipe = (id) =>
+    setAllRecipes(allRecipes.filter((r) => r.id !== id));
   const startEditingRecipe = (recipe) => {
     setEditingRecipe(recipe);
     setShowForm(false);
@@ -140,30 +136,7 @@ export default function App() {
       r.id === updatedRecipe.id ? updatedRecipe : r
     );
     setAllRecipes(updated);
-    setFilteredRecipes(updated);
     setEditingRecipe(null);
-  };
-  const cancelEditing = () => setEditingRecipe(null);
-  const handleAddToShoppingList = (items) => {
-    setShoppingList((prev) => {
-      const updated = [...prev];
-      let count = 0;
-      items.forEach((i) => {
-        if (
-          !updated.find((x) => x.name.toLowerCase() === i.name.toLowerCase())
-        ) {
-          updated.push(i);
-          count++;
-        }
-      });
-      if (count > 0)
-        toast.success(
-          `${count} item${count > 1 ? "s" : ""} added to shopping list.`
-        );
-      else
-        toast.info("All missing ingredients are already in the shopping list.");
-      return updated;
-    });
   };
 
   return (
@@ -175,20 +148,24 @@ export default function App() {
           path="/"
           element={
             <>
-              <IngredientInput onAddIngredient={addIngredient} />
+              <IngredientInput
+                onAddIngredient={addIngredient}
+                availableIngredients={allRecipes
+                  .flatMap((r) =>
+                    (r.ingredients || []).map((i) =>
+                      typeof i === "string" ? i : i.name
+                    )
+                  )
+                  .filter(Boolean)}
+              />
               <div className="layout-container">
                 <div className="left-panel">
                   <h2>Ingredients in your cupboard:</h2>
                   <ul className="ingredient-list">
                     {ingredients.map((i) => (
                       <li key={i}>
-                        {i}
-                        <button
-                          onClick={() => deleteIngredient(i)}
-                          className="delete-button"
-                        >
-                          ✕
-                        </button>
+                        {i}{" "}
+                        <button onClick={() => deleteIngredient(i)}>✕</button>
                       </li>
                     ))}
                   </ul>
@@ -213,14 +190,17 @@ export default function App() {
                     }}
                   />
                   <div style={{ marginBottom: "2rem" }}>
-                    <button onClick={toggleForm} className="add-new-button">
+                    <button onClick={toggleForm}>
                       {showForm ? "Close Recipe Form" : "Add New Recipe"}
+                    </button>
+                    <button onClick={clearFilters} style={{ marginLeft: 8 }}>
+                      Clear Filters / Show All Recipes
                     </button>
                     {editingRecipe ? (
                       <EditRecipeForm
                         initialRecipe={editingRecipe}
                         onUpdateRecipe={updateRecipe}
-                        onCancel={cancelEditing}
+                        onCancel={() => setEditingRecipe(null)}
                       />
                     ) : (
                       showForm && <AddRecipeForm onAddRecipe={addUserRecipe} />
@@ -231,7 +211,17 @@ export default function App() {
                     onDeleteRecipe={handleDeleteRecipe}
                     onEditRecipe={startEditingRecipe}
                     pantryIngredients={ingredients}
-                    onAddMissingToList={handleAddToShoppingList}
+                    onAddMissingToList={(missing) =>
+                      console.log("Add missing:", missing)
+                    }
+                    // provide a flat list of known ingredients for suggestions
+                    availableIngredients={allRecipes
+                      .flatMap((r) =>
+                        (r.ingredients || []).map((i) =>
+                          typeof i === "string" ? i : i.name
+                        )
+                      )
+                      .filter(Boolean)}
                   />
                 </div>
               </div>
