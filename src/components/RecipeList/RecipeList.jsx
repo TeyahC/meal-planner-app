@@ -7,43 +7,58 @@ export default function RecipeList({
   pantryIngredients,
   onAddMissingToList,
   onEditRecipe,
-  onDeleteRecipe,
 }) {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  /* ---------------- FETCH RECIPES ---------------- */
+  const fetchRecipes = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("recipes")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching recipes:", error.message);
+      setRecipes([]);
+    } else {
+      setRecipes(data || []);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchRecipes = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("recipes")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error fetching recipes:", error.message);
-      } else {
-        setRecipes(data || []);
-      }
-      setLoading(false);
-    };
-
     fetchRecipes();
   }, []);
+
+  /* ---------------- DELETE RECIPE ---------------- */
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this recipe?")) return;
+
+    const { error } = await supabase.from("recipes").delete().eq("id", id);
+
+    if (error) {
+      alert("Failed to delete recipe: " + error.message);
+    } else {
+      // Update UI immediately
+      setRecipes((prev) => prev.filter((r) => r.id !== id));
+      alert("Recipe deleted!");
+    }
+  };
 
   if (loading) return <p>Loading recipes...</p>;
   if (recipes.length === 0) return <p>No recipes found.</p>;
 
-  // Helper to find missing ingredients per recipe
-  function getMissingIngredients(recipeIngredients, pantryList) {
-    return recipeIngredients.filter((recipeIng) => {
-      const recipeName = recipeIng.name.toLowerCase().trim();
-      return !pantryList.some(
-        (item) => item.toLowerCase().trim() === recipeName
-      );
+  /* ---------------- HELPER ---------------- */
+  const getMissingIngredients = (recipeIngredients, pantryList) => {
+    return recipeIngredients.filter((ri) => {
+      const recipeName = ri.name.toLowerCase().trim();
+      return !pantryList.some((p) => p.toLowerCase().trim() === recipeName);
     });
-  }
+  };
 
+  /* ---------------- RENDER ---------------- */
   return (
     <div className="recipe-list">
       {recipes.map((recipe) => {
@@ -108,7 +123,7 @@ export default function RecipeList({
                 Edit
               </button>
               <button
-                onClick={() => onDeleteRecipe(id)}
+                onClick={() => handleDelete(id)}
                 className="delete2-button"
               >
                 Delete

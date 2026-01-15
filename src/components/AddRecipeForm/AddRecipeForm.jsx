@@ -10,83 +10,97 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
   const [servings, setServings] = useState(1);
   const [calories, setCalories] = useState("");
   const [protein, setProtein] = useState("");
+  const [recipeUrl, setRecipeUrl] = useState("");
+
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
 
-  // Load existing recipe if editing
+  /* ---------------- LOAD EXISTING RECIPE ---------------- */
+
   useEffect(() => {
-    if (existingRecipe) {
-      setName(existingRecipe.name || "");
+    if (!existingRecipe) return;
 
-      const ingrText = (existingRecipe.ingredients || [])
-        .map(({ quantity, unit, name }) => `${quantity} ${unit} ${name}`)
-        .join("\n");
-      setIngredients(ingrText);
+    setName(existingRecipe.name || "");
+    setInstructions(existingRecipe.instructions || "");
+    setServings(existingRecipe.servings || 1);
+    setCalories(existingRecipe.calories || "");
+    setProtein(existingRecipe.protein || "");
+    setAllergies((existingRecipe.allergies || []).join(", "));
 
-      setAllergies((existingRecipe.allergies || []).join(", "));
-      setInstructions(existingRecipe.instructions || "");
-      setServings(existingRecipe.servings || 1);
-      setCalories(existingRecipe.calories || "");
-      setProtein(existingRecipe.protein || "");
-    }
+    const ingrText = (existingRecipe.ingredients || [])
+      .map((i) => `${i.quantity} ${i.unit} ${i.name}`)
+      .join("\n");
+
+    setIngredients(ingrText);
   }, [existingRecipe]);
 
-  // Parse ingredients in the flexible format
+  /* ---------------- SMART INGREDIENT PARSER ---------------- */
+
   const parseIngredients = (text) => {
-    return text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
+    const FRACTIONS = {
+      "½": 0.5,
+      "¼": 0.25,
+      "¾": 0.75,
+      "⅓": 1 / 3,
+      "⅔": 2 / 3,
+    };
+
+    const normalizeQty = (q) => {
+      if (!q) return 1;
+      q = q.trim();
+      if (FRACTIONS[q]) return FRACTIONS[q];
+      if (q.includes("/")) {
+        const [a, b] = q.split("/").map(Number);
+        return a / b;
+      }
+      return Number(q);
+    };
+
+    const UNIT_LIST = [
+      "ml",
+      "g",
+      "tsp",
+      "tbsp",
+      "clove",
+      "portion",
+      "portions",
+      "unit",
+    ];
+
+    return [
+      ...new Set(
+        text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+      ),
+    ]
+      .map((line) => line.replace(/[†]/g, "").trim())
       .map((line) => {
-        // Remove symbols like †
-        line = line.replace(/†/g, "").trim();
-
-        // Fraction to decimal helper
-        const fractionToDecimal = (str) => {
-          if (str.includes("/")) {
-            const [num, denom] = str.split("/").map(Number);
-            return num / denom;
-          }
-          return parseFloat(str);
-        };
-
-        // Match weight/volume in parentheses, e.g., "Mayonnaise (50ml)"
-        const weightMatch = line.match(/(.+?)\(([\d./]+)([a-zA-Z]+)\)/);
-        if (weightMatch) {
-          return {
-            name: weightMatch[1].trim(),
-            quantity: fractionToDecimal(weightMatch[2]),
-            unit: weightMatch[3],
-          };
+        // match quantity first
+        const qtyMatch = line.match(/^([\d./½¼¾⅓⅔]+)/);
+        let quantity = 1;
+        let rest = line;
+        if (qtyMatch) {
+          quantity = normalizeQty(qtyMatch[1]);
+          rest = line.slice(qtyMatch[0].length).trim();
         }
 
-        // Match count/unit, e.g., "White potato x3"
-        const countMatch = line.match(/(.+?) x([\d./]+)/i);
-        if (countMatch) {
-          return {
-            name: countMatch[1].trim(),
-            quantity: fractionToDecimal(countMatch[2]),
-            unit: "unit",
-          };
+        // match unit if the next word is in UNIT_LIST
+        const parts = rest.split(/\s+/);
+        let unit = "unit";
+        if (parts.length > 1 && UNIT_LIST.includes(parts[0].toLowerCase())) {
+          unit = parts[0].toLowerCase();
+          parts.shift(); // remove unit
         }
 
-        // Match decimal quantity at start, e.g., "0.25 unit Mayonnaise"
-        const decimalMatch = line.match(/^([\d./]+)\s+(\S+)\s+(.+)$/);
-        if (decimalMatch) {
-          return {
-            quantity: fractionToDecimal(decimalMatch[1]),
-            unit: decimalMatch[2],
-            name: decimalMatch[3],
-          };
-        }
+        const name = parts.join(" ");
 
-        // Default: just ingredient name, 1 unit
-        return {
-          name: line,
-          quantity: 1,
-          unit: "unit",
-        };
+        return { quantity, unit, name };
       });
   };
+
+  /* ---------------- SUBMIT ---------------- */
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -94,7 +108,6 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
 
     const parsedIngredients = parseIngredients(ingredients);
 
-    // Normalize by servings
     const normalizedIngredients = parsedIngredients.map(
       ({ name, quantity, unit }) => ({
         name,
@@ -103,13 +116,38 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
       })
     );
 
-    const newRecipe = {
+    const allergenMap = {
+      milk: ["milk", "butter", "cheese", "cream", "yoghurt"],
+      egg: ["egg"],
+      gluten: ["flour", "bread", "pasta", "wheat"],
+      nuts: ["almond", "hazelnut", "walnut", "peanut", "cashew"],
+      soy: ["soy", "soya"],
+      fish: ["fish", "salmon", "tuna"],
+      shellfish: ["prawn", "shrimp", "crab"],
+      sesame: ["sesame"],
+      mustard: ["mustard"],
+    };
+
+    const found = new Set();
+    normalizedIngredients.forEach(({ name }) => {
+      const lower = name.toLowerCase();
+      for (const [allergen, keywords] of Object.entries(allergenMap)) {
+        if (keywords.some((k) => lower.includes(k))) found.add(allergen);
+      }
+    });
+
+    const recipe = {
       name: name.trim(),
       ingredients: normalizedIngredients,
-      allergies: allergies
-        .split(",")
-        .map((a) => a.trim().toLowerCase())
-        .filter(Boolean),
+      allergies: [
+        ...new Set([
+          ...found,
+          ...allergies
+            .split(",")
+            .map((a) => a.trim().toLowerCase())
+            .filter(Boolean),
+        ]),
+      ],
       instructions,
       servings,
       calories: Number(calories),
@@ -120,10 +158,10 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
     if (existingRecipe) {
       ({ error } = await supabase
         .from("recipes")
-        .update(newRecipe)
+        .update(recipe)
         .eq("id", existingRecipe.id));
     } else {
-      ({ error } = await supabase.from("recipes").insert([newRecipe]));
+      ({ error } = await supabase.from("recipes").insert([recipe]));
     }
 
     setLoading(false);
@@ -140,9 +178,12 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         setServings(1);
         setCalories("");
         setProtein("");
+        setRecipeUrl("");
       }
     }
   };
+
+  /* ---------------- RENDER ---------------- */
 
   return (
     <form onSubmit={handleSubmit} className="add-recipe-form">
@@ -150,18 +191,18 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
 
       <input
         type="text"
-        placeholder="Name"
+        placeholder="Recipe name"
         value={name}
         onChange={(e) => setName(e.target.value)}
         required
       />
 
       <textarea
-        placeholder="Ingredients (one per line, e.g. 'Cayenne pepper (0.5tsp)' or 'White potato x3')"
+        placeholder="Ingredients (copy-paste from recipe, one per line)"
         value={ingredients}
         onChange={(e) => setIngredients(e.target.value)}
-        required
         rows={8}
+        required
       />
 
       <input
@@ -172,28 +213,23 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
       />
 
       <textarea
-        placeholder="Instructions (use \\n for new lines)"
+        placeholder="Instructions"
         value={instructions}
         onChange={(e) => setInstructions(e.target.value)}
-        required
         rows={5}
+        required
       />
 
-      <label htmlFor="servings-input">Servings (number of people):</label>
+      <label>Servings</label>
       <input
-        id="servings-input"
         type="number"
         min="1"
         value={servings}
-        onChange={(e) =>
-          setServings(Math.max(1, parseInt(e.target.value) || 1))
-        }
-        required
+        onChange={(e) => setServings(Math.max(1, Number(e.target.value) || 1))}
       />
 
-      <label htmlFor="calories-input">Calories per portion:</label>
+      <label>Calories per portion</label>
       <input
-        id="calories-input"
         type="number"
         min="0"
         value={calories}
@@ -201,9 +237,8 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         required
       />
 
-      <label htmlFor="protein-input">Protein (g) per portion:</label>
+      <label>Protein (g) per portion</label>
       <input
-        id="protein-input"
         type="number"
         min="0"
         value={protein}

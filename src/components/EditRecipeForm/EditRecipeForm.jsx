@@ -12,80 +12,113 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
   const [protein, setProtein] = useState("");
   const [loading, setLoading] = useState(false);
 
+  /* ---------------- LOAD INITIAL RECIPE ---------------- */
   useEffect(() => {
-    if (initialRecipe) {
-      setName(initialRecipe.name || "");
+    if (!initialRecipe) return;
 
-      const ingrText = (initialRecipe.ingredients || [])
-        .map(({ quantity, unit, name }) => `${quantity} ${unit} ${name}`)
-        .join("\n");
-      setIngredients(ingrText);
+    setName(initialRecipe.name || "");
 
-      setAllergies((initialRecipe.allergies || []).join(", "));
-      setInstructions(initialRecipe.instructions || "");
-      setServings(initialRecipe.servings || 1);
-      setCalories(initialRecipe.calories || "");
-      setProtein(initialRecipe.protein || "");
-    }
+    const ingrText = (initialRecipe.ingredients || [])
+      .map(({ quantity, unit, name }) => `${quantity} ${unit} ${name}`)
+      .join("\n");
+    setIngredients(ingrText);
+
+    setAllergies((initialRecipe.allergies || []).join(", "));
+    setInstructions(initialRecipe.instructions || "");
+    setServings(initialRecipe.servings || 1);
+    setCalories(initialRecipe.calories || "");
+    setProtein(initialRecipe.protein || "");
   }, [initialRecipe]);
 
-  // Helper to convert fractions to decimals
-  const fractionToDecimal = (str) => {
-    if (str.includes("/")) {
-      const [num, denom] = str.split("/").map(Number);
-      return num / denom;
-    }
-    return parseFloat(str);
-  };
-
-  // Flexible ingredient parser
+  /* ---------------- INGREDIENT PARSER ---------------- */
   const parseIngredients = (text) => {
-    return text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        line = line.replace(/†/g, "").trim();
+    const FRACTIONS = {
+      "½": 0.5,
+      "¼": 0.25,
+      "¾": 0.75,
+      "⅓": 1 / 3,
+      "⅔": 2 / 3,
+    };
 
-        // Match weight/volume in parentheses: "Mayonnaise (50ml)"
-        const weightMatch = line.match(/(.+?)\(([\d./]+)([a-zA-Z]+)\)/);
-        if (weightMatch) {
-          return {
-            name: weightMatch[1].trim(),
-            quantity: fractionToDecimal(weightMatch[2]),
-            unit: weightMatch[3],
-          };
-        }
+    const normalizeQty = (q) => {
+      if (!q) return 1;
+      q = q.trim();
+      if (FRACTIONS[q]) return FRACTIONS[q];
+      if (q.includes("/")) {
+        const [a, b] = q.split("/").map(Number);
+        return a / b;
+      }
+      return parseFloat(q);
+    };
 
-        // Match count/unit: "White potato x3"
-        const countMatch = line.match(/(.+?) x([\d./]+)/i);
-        if (countMatch) {
-          return {
-            name: countMatch[1].trim(),
-            quantity: fractionToDecimal(countMatch[2]),
-            unit: "unit",
-          };
-        }
+    const UNIT_LIST = [
+      "ml",
+      "g",
+      "tsp",
+      "tbsp",
+      "clove",
+      "portion",
+      "portions",
+      "unit",
+    ];
 
-        // Match decimal quantity at start: "0.25 unit Mayonnaise"
-        const decimalMatch = line.match(/^([\d./]+)\s+(\S+)\s+(.+)$/);
-        if (decimalMatch) {
-          return {
-            quantity: fractionToDecimal(decimalMatch[1]),
-            unit: decimalMatch[2],
-            name: decimalMatch[3],
-          };
-        }
+    // Remove duplicates and empty lines
+    const lines = [
+      ...new Set(
+        text
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean)
+      ),
+    ];
 
-        // Default: 1 unit
+    return lines.map((line) => {
+      line = line.replace(/†/g, "").trim();
+
+      // 1) Match "Name (50ml)" or "Name (16g)"
+      const parenMatch = line.match(
+        /^(.+?)\s*\(([\d./½¼¾⅓⅔]+)\s*([a-zA-Z]+)\)$/
+      );
+      if (parenMatch) {
         return {
-          name: line,
-          quantity: 1,
+          name: parenMatch[1].trim(),
+          quantity: normalizeQty(parenMatch[2]),
+          unit: parenMatch[3],
+        };
+      }
+
+      // 2) Match "Name x3"
+      const countMatch = line.match(/^(.+?) x([\d./½¼¾⅓⅔]+)$/i);
+      if (countMatch) {
+        return {
+          name: countMatch[1].trim(),
+          quantity: normalizeQty(countMatch[2]),
           unit: "unit",
         };
-      });
+      }
+
+      // 3) Match "Quantity Unit Name" e.g., "2 tsp ground coriander"
+      const parts = line.split(/\s+/);
+      if (parts.length >= 2) {
+        const qty = normalizeQty(parts[0]);
+        const nextWord = parts[1].toLowerCase();
+        let unit = "unit";
+        let name = parts.slice(1).join(" ");
+
+        if (UNIT_LIST.includes(nextWord)) {
+          unit = nextWord;
+          name = parts.slice(2).join(" ");
+        }
+
+        return { quantity: qty, unit, name };
+      }
+
+      // 4) Default: 1 unit
+      return { quantity: 1, unit: "unit", name: line };
+    });
   };
 
+  /* ---------------- SUBMIT ---------------- */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -109,7 +142,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
         .map((a) => a.trim().toLowerCase())
         .filter(Boolean),
       instructions,
-      servings, // store as entered
+      servings,
       calories: Number(calories),
       protein: Number(protein),
     };
@@ -131,6 +164,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
     }
   };
 
+  /* ---------------- RENDER ---------------- */
   return (
     <form onSubmit={handleSubmit} className="add-recipe-form">
       <h2>Edit Recipe</h2>
