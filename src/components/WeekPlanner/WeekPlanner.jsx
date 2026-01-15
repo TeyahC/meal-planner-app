@@ -28,40 +28,38 @@ export default function WeekPlanner() {
   const [portions, setPortions] = useState(1);
   const [editingWeekId, setEditingWeekId] = useState(null);
   const [weekNameInput, setWeekNameInput] = useState("");
-
-  /* ✅ NEW: removed shopping items */
   const [removedShoppingItems, setRemovedShoppingItems] = useState(new Set());
 
-  /* ---------------- LOAD RECIPES ---------------- */
+  // Load recipes
   useEffect(() => {
     const fetchRecipes = async () => {
       const { data, error } = await supabase
         .from("recipes")
         .select("*")
         .order("created_at", { ascending: false });
-      if (!error) setRecipes(data || []);
+      if (error) console.error(error);
+      else setRecipes(data || []);
     };
     fetchRecipes();
   }, []);
 
-  /* ---------------- LOAD WEEKS ---------------- */
+  // Load weeks & select saved week from localStorage
   useEffect(() => {
     const fetchWeeks = async () => {
       setLoading(true);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("week_planner")
         .select("*")
         .order("created_at", { ascending: false });
-
-      setWeeks(data || []);
-
-      const savedWeekId = localStorage.getItem("currentWeekId");
-      const weekToLoad =
-        data?.find((w) => w.id.toString() === savedWeekId) || data?.[0];
-
-      if (weekToLoad) loadWeek(weekToLoad);
-      else createNewWeek();
-
+      if (error) console.error(error);
+      else {
+        setWeeks(data || []);
+        const savedWeekId = localStorage.getItem("currentWeekId");
+        const weekToLoad =
+          data?.find((w) => w.id.toString() === savedWeekId) || data?.[0];
+        if (weekToLoad) loadWeek(weekToLoad);
+        else createNewWeek();
+      }
       setLoading(false);
     };
     fetchWeeks();
@@ -71,70 +69,79 @@ export default function WeekPlanner() {
     setCurrentWeekId(week.id);
     setPlanner(week.planner || createEmptyWeekPlanner());
     setWeekNameInput(week.name || "Unnamed Week");
-    setRemovedShoppingItems(new Set()); // reset removals on week switch
   };
 
   const savePlanner = async (newPlanner) => {
     if (!currentWeekId) return;
-    await supabase
+    const { error } = await supabase
       .from("week_planner")
       .update({ planner: newPlanner, updated_at: new Date() })
       .eq("id", currentWeekId);
+    if (error) console.error("Error saving week:", error);
   };
 
   const createNewWeek = async () => {
-    const { data: newWeek } = await supabase
+    setLoading(true);
+    const { data: newWeek, error } = await supabase
       .from("week_planner")
       .insert([{ name: "New Week", planner: createEmptyWeekPlanner() }])
       .select()
       .single();
-
-    if (newWeek) {
+    if (error) console.error(error);
+    else {
       setWeeks((prev) => [newWeek, ...prev]);
       loadWeek(newWeek);
       localStorage.setItem("currentWeekId", newWeek.id);
     }
+    setLoading(false);
   };
 
+  // --- FULL PAGE RELOAD WEEK SWITCH ---
   const switchWeek = (weekId) => {
     localStorage.setItem("currentWeekId", weekId);
-    window.location.reload();
+    window.location.reload(); // force full reload
   };
 
   const renameWeek = async (weekId, newName) => {
     if (!newName.trim()) return;
-    await supabase
+    const { error } = await supabase
       .from("week_planner")
-      .update({ name: newName })
+      .update({ name: newName, updated_at: new Date() })
       .eq("id", weekId);
-
-    setWeeks((prev) =>
-      prev.map((w) => (w.id === weekId ? { ...w, name: newName } : w))
-    );
+    if (error) console.error(error);
+    else
+      setWeeks((prev) =>
+        prev.map((w) => (w.id === weekId ? { ...w, name: newName } : w))
+      );
   };
 
   const deleteWeek = async (weekId) => {
-    await supabase.from("week_planner").delete().eq("id", weekId);
-    const remaining = weeks.filter((w) => w.id !== weekId);
-    setWeeks(remaining);
-    localStorage.removeItem("currentWeekId");
-    remaining.length ? loadWeek(remaining[0]) : createNewWeek();
+    const { error } = await supabase
+      .from("week_planner")
+      .delete()
+      .eq("id", weekId);
+    if (error) console.error(error);
+    else {
+      const remainingWeeks = weeks.filter((w) => w.id !== weekId);
+      setWeeks(remainingWeeks);
+      localStorage.removeItem("currentWeekId");
+      if (remainingWeeks.length) loadWeek(remainingWeeks[0]);
+      else createNewWeek();
+    }
   };
 
-  /* ---------------- DRAG & DROP ---------------- */
   const handleDragEnd = ({ source, destination, draggableId }) => {
     if (!destination || destination.droppableId === "recipe-list") return;
-
     const recipe = recipes.find((r) => r.id.toString() === draggableId);
     if (!recipe) return;
 
     const newPlanner = { ...planner };
 
     if (source.droppableId === "recipe-list") {
-      newPlanner[destination.droppableId].push({
-        recipe,
-        portions: 1,
-      });
+      newPlanner[destination.droppableId] = [
+        ...newPlanner[destination.droppableId],
+        { recipe, portions: 1 },
+      ];
     } else {
       const [moved] = newPlanner[source.droppableId].splice(source.index, 1);
       newPlanner[destination.droppableId].splice(destination.index, 0, moved);
@@ -151,10 +158,10 @@ export default function WeekPlanner() {
     savePlanner(newPlanner);
   };
 
-  const handlePortionsChange = (day, index, value) => {
-    if (value < 1) return;
+  const handlePortionsChange = (day, index, newPortions) => {
+    if (newPortions < 1) return;
     const newPlanner = { ...planner };
-    newPlanner[day][index].portions = value;
+    newPlanner[day][index].portions = newPortions;
     setPlanner(newPlanner);
     savePlanner(newPlanner);
   };
@@ -193,7 +200,7 @@ export default function WeekPlanner() {
 
   return (
     <div className="planner-container">
-      {/* ---------- WEEK SELECTOR ---------- */}
+      {/* Week Selector */}
       <div className="week-selector">
         {weeks.map((w) => (
           <div key={w.id} className="week-button-wrapper">
@@ -204,6 +211,7 @@ export default function WeekPlanner() {
             >
               {editingWeekId === w.id ? (
                 <input
+                  type="text"
                   value={weekNameInput}
                   autoFocus
                   onChange={(e) => setWeekNameInput(e.target.value)}
@@ -211,31 +219,36 @@ export default function WeekPlanner() {
                     renameWeek(w.id, weekNameInput);
                     setEditingWeekId(null);
                   }}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" &&
-                    renameWeek(w.id, weekNameInput) &&
-                    setEditingWeekId(null)
-                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      renameWeek(w.id, weekNameInput);
+                      setEditingWeekId(null);
+                    }
+                  }}
                 />
               ) : (
                 <span
                   className="week-name"
-                  onClick={() => editingWeekId === null && switchWeek(w.id)}
+                  onClick={() => {
+                    if (editingWeekId === null) switchWeek(w.id);
+                  }}
                 >
                   {w.name || "Unnamed Week"}
                 </span>
               )}
             </button>
 
-            <button
-              className="edit-week-button"
-              onClick={() => {
-                setEditingWeekId(w.id);
-                setWeekNameInput(w.name || "Unnamed Week");
-              }}
-            >
-              ✏️
-            </button>
+            {editingWeekId !== w.id && (
+              <button
+                className="edit-week-button"
+                onClick={() => {
+                  setEditingWeekId(w.id);
+                  setWeekNameInput(w.name || "Unnamed Week");
+                }}
+              >
+                ✏️
+              </button>
+            )}
 
             <button
               className="delete-week-button"
@@ -250,70 +263,128 @@ export default function WeekPlanner() {
         </button>
       </div>
 
-      {/* ---------- PLANNER ---------- */}
+      {/* Planner & Sidebar */}
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="planner-layout">
           <div className="week-grid">
             {days.map((day) => (
               <div key={day} className="day-column">
                 <h3>{day}</h3>
+                <h4 className="meal-label">Dinner</h4>
                 <Droppable droppableId={day}>
-                  {(p) => (
+                  {(provided) => (
                     <div
-                      ref={p.innerRef}
-                      {...p.droppableProps}
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
                       className="meal-slot"
                     >
-                      {planner[day].map(({ recipe, portions }, i) => (
-                        <Draggable
-                          key={`${recipe.id}-${i}`}
-                          draggableId={recipe.id.toString()}
-                          index={i}
-                        >
-                          {(p) => (
-                            <div
-                              ref={p.innerRef}
-                              {...p.draggableProps}
-                              {...p.dragHandleProps}
-                              className="assigned-recipe"
-                            >
-                              <div className="top-row">
-                                <span>{recipe.name}</span>
-                                <button
-                                  className="remove-button"
-                                  onClick={() => handleRemoveRecipe(day, i)}
-                                >
-                                  ✖
-                                </button>
+                      {planner[day]?.length === 0 && (
+                        <div className="empty-slot">No recipes</div>
+                      )}
+                      {planner[day]?.map(
+                        ({ recipe, portions: rPortions }, idx) => (
+                          <Draggable
+                            key={`${recipe.id}-${day}-${idx}`}
+                            draggableId={recipe.id.toString()}
+                            index={idx}
+                          >
+                            {(provided) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className="assigned-recipe"
+                              >
+                                <div className="top-row">
+                                  <span>{recipe.name}</span>
+                                  <button
+                                    className="remove-button"
+                                    onClick={() => handleRemoveRecipe(day, idx)}
+                                  >
+                                    ✖
+                                  </button>
+                                </div>
+                                <label>
+                                  Portions:
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={rPortions}
+                                    onChange={(e) =>
+                                      handlePortionsChange(
+                                        day,
+                                        idx,
+                                        parseInt(e.target.value, 10)
+                                      )
+                                    }
+                                  />
+                                </label>
                               </div>
-                              <label>
-                                Portions:
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={portions}
-                                  onChange={(e) =>
-                                    handlePortionsChange(
-                                      day,
-                                      i,
-                                      parseInt(e.target.value, 10)
-                                    )
-                                  }
-                                />
-                              </label>
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
-                      {p.placeholder}
+                            )}
+                          </Draggable>
+                        )
+                      )}
+                      {provided.placeholder}
                     </div>
                   )}
                 </Droppable>
               </div>
             ))}
           </div>
+
+          {/* Recipe Sidebar */}
+          <div className="recipe-sidebar">
+            <h3>All Recipes</h3>
+            <Droppable droppableId="recipe-list" isDropDisabled>
+              {(provided) => (
+                <div ref={provided.innerRef} {...provided.droppableProps}>
+                  {recipes.map((recipe, index) => (
+                    <Draggable
+                      key={recipe.id}
+                      draggableId={recipe.id.toString()}
+                      index={index}
+                    >
+                      {(provided) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className="draggable-recipe"
+                        >
+                          <h4>{recipe.name}</h4>
+                          <p>
+                            <strong>Calories:</strong> {recipe.calories || 0}{" "}
+                            kcal
+                          </p>
+                          <p>
+                            <strong>Protein:</strong> {recipe.protein || 0} g
+                          </p>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </div>
         </div>
       </DragDropContext>
+
+      {/* Portions */}
+      <div className="portion-selector">
+        <label>Number of people (global multiplier):</label>
+        <select
+          value={portions}
+          onChange={(e) => setPortions(parseInt(e.target.value, 10))}
+        >
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
+            <option key={num} value={num}>
+              {num}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* ---------- SHOPPING LIST ---------- */}
       <div className="shopping-list">
