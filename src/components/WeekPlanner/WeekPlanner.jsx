@@ -367,18 +367,6 @@ export default function WeekPlanner() {
               }}
             />
 
-            {/* Allergy Filter */}
-            <AllergyFilter
-              selectedAllergies={allergies}
-              onToggleAllergy={(allergy) =>
-                setAllergies((prev) =>
-                  prev.includes(allergy)
-                    ? prev.filter((a) => a !== allergy)
-                    : [...prev, allergy]
-                )
-              }
-            />
-
             <Droppable droppableId="recipe-list" isDropDisabled>
               {(provided) => (
                 <div ref={provided.innerRef} {...provided.droppableProps}>
