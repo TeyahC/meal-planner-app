@@ -274,7 +274,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         ]),
       ],
       instructions,
-      servings: 1,
+      servings,
       calories: Number(calories),
       protein: Number(protein),
       fibre: Number(fibre),
