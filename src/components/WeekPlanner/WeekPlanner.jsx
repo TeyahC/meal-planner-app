@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { supabase } from "../../lib/supabase";
 import "../../styles/WeekPlanner.css";
+import AllergyFilter from "../AllergyFilter/AllergyFilter";
 
 export default function WeekPlanner() {
   const days = [
@@ -30,6 +31,11 @@ export default function WeekPlanner() {
   const [weekNameInput, setWeekNameInput] = useState("");
   const [removedShoppingItems, setRemovedShoppingItems] = useState(new Set());
 
+  // Search and filter
+  const [searchTerm, setSearchTerm] = useState("");
+  const [allergies, setAllergies] = useState([]);
+  const [ingredients, setIngredients] = useState([]);
+
   // Load recipes
   useEffect(() => {
     const fetchRecipes = async () => {
@@ -38,12 +44,25 @@ export default function WeekPlanner() {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) console.error(error);
-      else setRecipes(data || []);
+      else {
+        const parsed = (data || []).map((r) => ({
+          ...r,
+          ingredients:
+            typeof r.ingredients === "string"
+              ? JSON.parse(r.ingredients)
+              : r.ingredients || [],
+          allergies:
+            typeof r.allergies === "string"
+              ? JSON.parse(r.allergies)
+              : r.allergies || [],
+        }));
+        setRecipes(parsed);
+      }
     };
     fetchRecipes();
   }, []);
 
-  // Load weeks & select saved week from localStorage
+  // Load weeks
   useEffect(() => {
     const fetchWeeks = async () => {
       setLoading(true);
@@ -96,10 +115,9 @@ export default function WeekPlanner() {
     setLoading(false);
   };
 
-  // --- FULL PAGE RELOAD WEEK SWITCH ---
   const switchWeek = (weekId) => {
     localStorage.setItem("currentWeekId", weekId);
-    window.location.reload(); // force full reload
+    window.location.reload();
   };
 
   const renameWeek = async (weekId, newName) => {
@@ -166,16 +184,13 @@ export default function WeekPlanner() {
     savePlanner(newPlanner);
   };
 
-  /* ---------------- SHOPPING LIST ---------------- */
   const ingredientTotals = useMemo(() => {
     const totals = {};
-
     Object.values(planner).forEach((dayRecipes) => {
       dayRecipes.forEach(({ recipe, portions: rPortions }) => {
         (recipe.ingredients || []).forEach(({ name, unit, quantity }) => {
           const key = `${name}-${unit}`;
           const qty = (quantity || 0) * rPortions * portions;
-
           if (!removedShoppingItems.has(key)) {
             totals[key] = totals[key]
               ? { ...totals[key], quantity: totals[key].quantity + qty }
@@ -184,7 +199,6 @@ export default function WeekPlanner() {
         });
       });
     });
-
     return totals;
   }, [planner, portions, removedShoppingItems]);
 
@@ -266,6 +280,7 @@ export default function WeekPlanner() {
       {/* Planner & Sidebar */}
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="planner-layout">
+          {/* Week Grid */}
           <div className="week-grid">
             {days.map((day) => (
               <div key={day} className="day-column">
@@ -335,37 +350,80 @@ export default function WeekPlanner() {
           {/* Recipe Sidebar */}
           <div className="recipe-sidebar">
             <h3>All Recipes</h3>
+
+            {/* Search */}
+            <input
+              type="search"
+              placeholder="Search recipes by name or ingredient..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                padding: "0.6rem",
+                width: "100%",
+                maxWidth: "400px",
+                marginBottom: "1rem",
+                borderRadius: "8px",
+                border: "1px solid #ccc",
+              }}
+            />
+
+            {/* Allergy Filter */}
+            <AllergyFilter
+              selectedAllergies={allergies}
+              onToggleAllergy={(allergy) =>
+                setAllergies((prev) =>
+                  prev.includes(allergy)
+                    ? prev.filter((a) => a !== allergy)
+                    : [...prev, allergy]
+                )
+              }
+            />
+
             <Droppable droppableId="recipe-list" isDropDisabled>
               {(provided) => (
                 <div ref={provided.innerRef} {...provided.droppableProps}>
-                  {recipes.map((recipe, index) => (
-                    <Draggable
-                      key={recipe.id}
-                      draggableId={recipe.id.toString()}
-                      index={index}
-                    >
-                      {(provided) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          className="draggable-recipe"
-                        >
-                          <h4>{recipe.name}</h4>
-                          <p>
-                            <strong>Calories:</strong> {recipe.calories || 0}{" "}
-                            kcal
-                          </p>
-                          <p>
-                            <strong>Protein:</strong> {recipe.protein || 0} g
-                          </p>
-                          <p>
-                            <strong>Fibre:</strong> {recipe.fibre || 0} g
-                          </p>
-                        </div>
-                      )}
-                    </Draggable>
-                  ))}
+                  {recipes
+                    .filter((recipe) => {
+                      const term = searchTerm.toLowerCase();
+                      if (!term) return true;
+
+                      const inName = recipe.name.toLowerCase().includes(term);
+                      const inIngredients = (recipe.ingredients || []).some(
+                        (ing) => {
+                          const name = typeof ing === "string" ? ing : ing.name;
+                          return name?.toLowerCase().includes(term);
+                        }
+                      );
+                      return inName || inIngredients;
+                    })
+                    .map((recipe, index) => (
+                      <Draggable
+                        key={recipe.id}
+                        draggableId={recipe.id.toString()}
+                        index={index}
+                      >
+                        {(provided) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            className="draggable-recipe"
+                          >
+                            <h4>{recipe.name}</h4>
+                            <p>
+                              <strong>Calories:</strong> {recipe.calories || 0}{" "}
+                              kcal
+                            </p>
+                            <p>
+                              <strong>Protein:</strong> {recipe.protein || 0} g
+                            </p>
+                            <p>
+                              <strong>Fibre:</strong> {recipe.fibre || 0} g
+                            </p>
+                          </div>
+                        )}
+                      </Draggable>
+                    ))}
                   {provided.placeholder}
                 </div>
               )}
@@ -389,10 +447,9 @@ export default function WeekPlanner() {
         </select>
       </div>
 
-      {/* ---------- SHOPPING LIST ---------- */}
+      {/* Shopping List */}
       <div className="shopping-list">
         <h3>Shopping List</h3>
-
         {Object.keys(ingredientTotals).length === 0 ? (
           <p>No ingredients selected yet.</p>
         ) : (
@@ -416,7 +473,6 @@ export default function WeekPlanner() {
                 )
               )}
             </ul>
-
             <button
               className="reset-remove-buttton"
               onClick={resetShoppingList}
