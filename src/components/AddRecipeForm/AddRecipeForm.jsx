@@ -234,18 +234,11 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
     const parsedIngredients = parseIngredients(ingredients);
 
     const normalizedIngredients = parsedIngredients.map(
-      ({ name, quantity, unit }) => {
-        // If editing, keep the original quantity (assume it’s already per portion)
-        if (existingRecipe) {
-          return { name, quantity, unit };
-        }
-        // If new, convert to per portion
-        return {
-          name,
-          quantity: servings > 0 ? quantity / servings : quantity,
-          unit,
-        };
-      }
+      ({ name, quantity, unit }) => ({
+        name,
+        quantity: servings > 0 ? quantity / servings : quantity,
+        unit,
+      })
     );
 
     const allergenMap = {
@@ -281,7 +274,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         ]),
       ],
       instructions,
-      servings,
+      servings: 1,
       calories: Number(calories),
       protein: Number(protein),
       fibre: Number(fibre),
