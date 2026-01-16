@@ -196,6 +196,8 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
       alert("Recipe updated!");
       if (onUpdated) onUpdated(data);
     }
+
+    window.location.reload();
   };
 
   /* ---------------- RENDER ---------------- */

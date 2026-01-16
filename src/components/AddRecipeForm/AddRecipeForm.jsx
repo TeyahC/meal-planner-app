@@ -307,6 +307,7 @@ export default function AddRecipeForm({ existingRecipe, onCancel }) {
         setRecipeUrl("");
         setFibre("");
       }
+      window.location.reload();
     }
   };
 
