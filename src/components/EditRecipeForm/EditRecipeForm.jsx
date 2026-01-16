@@ -175,7 +175,7 @@ export default function EditRecipeForm({ initialRecipe, onCancel, onUpdated }) {
         .map((a) => a.trim().toLowerCase())
         .filter(Boolean),
       instructions,
-      servings,
+      servings: 1,
       calories: Number(calories),
       protein: Number(protein),
       fibre: Number(fibre),
